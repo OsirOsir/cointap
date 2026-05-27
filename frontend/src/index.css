@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --radius: 0.875rem;
+  --background: #121620;
+  --foreground: #f5f6fa;
+  --card: #1a1f2e;
+  --card-foreground: #f5f6fa;
+  --primary: #f7931a;
+  --primary-hex: #f7931a;
+  --primary-foreground: #121620;
+  --secondary: #232a3b;
+  --secondary-foreground: #f5f6fa;
+  --muted: #1e2535;
+  --muted-foreground: #8892a4;
+  --accent: #f7931a;
+  --accent-foreground: #121620;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #4ade80;
+  --success-foreground: #121620;
+  --warning: #fbbf24;
+  --border: rgba(255,255,255,0.08);
+  --input: #1e2535;
+  --ring: #f7931a;
+  --gold: #f5a623;
+  --gold-glow: rgba(247, 147, 26, 0.35);
+
+  --gradient-gold: linear-gradient(135deg, #f5a623, #e07b10);
+  --gradient-card: linear-gradient(160deg, rgba(26,31,46,0.95), rgba(18,22,32,0.90));
+  --shadow-glow: 0 0 40px -10px rgba(247,147,26,0.5);
+  --shadow-card: 0 8px 32px -8px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+* {
+  border-color: var(--border);
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(247,147,26,0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(100,80,200,0.06), transparent);
+  background-attachment: fixed;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+}
+
+.font-display {
+  font-family: 'Space Grotesk', system-ui, sans-serif !important;
+}
+
+/* Glass morphism */
+.glass {
+  background: var(--gradient-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: var(--shadow-card);
+}
+
+/* Gold glow */
+.glow-gold {
+  box-shadow: var(--shadow-glow);
+}
+
+/* Gold gradient text */
+.text-gradient-gold {
+  background: var(--gradient-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Grid background */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Node background radial blobs */
+.node-bg {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(247,147,26,0.15) 0, transparent 25%),
+    radial-gradient(circle at 80% 70%, rgba(100,80,200,0.12) 0, transparent 30%),
+    radial-gradient(circle at 60% 20%, rgba(247,147,26,0.1) 0, transparent 20%);
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(247,147,26,0.4); }
+  50% { box-shadow: 0 0 40px rgba(247,147,26,0.7); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Input reset */
+input, textarea, select {
+  background-color: var(--input);
+  color: var(--foreground);
+  font-family: inherit;
+}
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px rgba(247,147,26,0.2);
+}
+input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+/* Transition defaults */
+button, a {
+  transition: all 0.2s ease;
+}
