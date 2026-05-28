@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, ArrowDownRight, TrendingUp, Users, PiggyBank, Zap, Activity, Droplets, BarChart3 } from 'lucide-react'
 import { formatKsh, useStore } from '@/lib/cointap-store'
 import { Countdown } from '@/components/cointap/Countdown'
 import { NodeBackground } from '@/components/cointap/NodeBackground'
+import { EmailVerificationBanner } from '@/components/cointap/Security'
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 // Mock data for charts
@@ -73,6 +75,7 @@ function StatCard({ icon: Icon, label, value, subtext, color, change }: any) {
 }
 
 export function Dashboard() {
+  const navigate = useNavigate()
   const user = useStore((s) => s.user)
   const wallet = useStore((s) => s.wallet)
   const orders = useStore((s) => s.orders)
@@ -86,6 +89,11 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 pb-10">
+      {/* Email verification banner */}
+      {user && !user.email_verified && (
+        <EmailVerificationBanner onVerify={() => navigate('/verify-email')} />
+      )}
+
       {/* PREMIUM HERO CARD */}
       <div className="glass rounded-3xl p-8 sm:p-10 relative overflow-hidden group animate-slide-up">
         <div className="absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-all duration-500"

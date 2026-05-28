@@ -71,6 +71,30 @@ export interface User {
   phone: string
   referral_code: string
   role: 'user' | 'admin'
+  email_verified?: boolean
+  two_factor_enabled?: boolean
+  two_factor_secret?: string  // demo only — would be backend-stored
+  last_withdrawal_at?: number
+  daily_withdrawal_total?: number
+  daily_withdrawal_reset_at?: number
+  flagged?: boolean              // suspicious activity flag
+  flag_reason?: string
+}
+
+export interface LoginAttempt {
+  email: string
+  success: boolean
+  timestamp: number
+  ip?: string  // demo — would come from backend
+}
+
+export interface SecurityEvent {
+  id: string
+  type: 'login_failed' | 'login_locked' | 'login_unlocked' | 'password_changed' | '2fa_enabled' | '2fa_disabled' | 'suspicious_withdrawal' | 'rapid_withdrawals' | 'new_device' | 'large_withdrawal' | 'email_verified'
+  email: string
+  details: string
+  severity: 'info' | 'warning' | 'critical'
+  timestamp: number
 }
 
 export interface AdminUser {
@@ -131,6 +155,9 @@ interface State {
   admin_users: AdminUser[]
   announcements: Announcement[]
   activity_logs: ActivityLog[]
+  login_attempts: LoginAttempt[]
+  security_events: SecurityEvent[]
+  lockout_until?: number   // timestamp when lockout ends
 }
 
 const KEY = 'cointap-state-v2'
@@ -181,6 +208,12 @@ const initial: State = {
     { id: 'l2', action: 'User Suspended', target: 'peter@example.com', details: 'Suspicious activity', admin_email: 'admin@cointap.trade', created_at: Date.now() - 86400000 },
     { id: 'l3', action: 'Pool Released', target: 'Public Pool', details: 'Released Ksh 500,000 from reserve', admin_email: 'admin@cointap.trade', created_at: Date.now() - 7200000 },
   ],
+  login_attempts: [],
+  security_events: [
+    { id: 'se1', type: 'suspicious_withdrawal', email: 'peter@example.com', details: 'Withdrawal Ksh 50,000 from new device', severity: 'warning', timestamp: Date.now() - 3600000 * 8 },
+    { id: 'se2', type: 'login_locked', email: 'unknown@test.com', details: 'Account locked after 5 failed login attempts', severity: 'critical', timestamp: Date.now() - 3600000 * 2 },
+    { id: 'se3', type: 'rapid_withdrawals', email: 'james@example.com', details: '3 withdrawals in 10 minutes — flagged for review', severity: 'warning', timestamp: Date.now() - 3600000 * 4 },
+  ],
 }
 
 function load(): State {
@@ -212,24 +245,156 @@ export const store = {
     const code = 'CT' + Math.random().toString(36).slice(2, 7).toUpperCase()
     set((s) => ({
       ...s,
-      user: { ...input, referral_code: code, role: 'user' },
+      user: {
+        ...input,
+        referral_code: code,
+        role: 'user',
+        email_verified: false,
+        two_factor_enabled: false,
+      },
       wallet: { balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 },
     }))
   },
 
-  login(email: string, isAdmin = false) {
-    if (!state.user) {
-      set((s) => ({
-        ...s,
-        user: {
-          full_name: isAdmin ? 'Admin User' : 'Demo Investor',
-          email,
-          phone: '+254700000000',
-          referral_code: isAdmin ? 'CTADMIN' : 'CTDEMO1',
-          role: isAdmin ? 'admin' : 'user',
-        },
-      }))
+  // Secure login with attempt tracking and lockout
+  login(email: string, isAdmin = false): { ok: boolean; error?: string; locked_until?: number; requires_2fa?: boolean } {
+    const now = Date.now()
+
+    // Check lockout
+    if (state.lockout_until && now < state.lockout_until) {
+      const minutesLeft = Math.ceil((state.lockout_until - now) / 60000)
+      return { ok: false, error: `Account locked. Try again in ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}.`, locked_until: state.lockout_until }
     }
+
+    // Count recent failed attempts for this email (within last 15 minutes)
+    const fifteenMinsAgo = now - 15 * 60_000
+    const recentFails = state.login_attempts.filter(
+      (a) => a.email.toLowerCase() === email.toLowerCase() && !a.success && a.timestamp > fifteenMinsAgo
+    ).length
+
+    // Demo: simulate that very specific email "blocked@test.com" always fails
+    const willFail = email.toLowerCase() === 'blocked@test.com'
+    const newAttempt: LoginAttempt = { email, success: !willFail, timestamp: now }
+
+    if (willFail) {
+      set((s) => ({ ...s, login_attempts: [newAttempt, ...s.login_attempts].slice(0, 100) }))
+      const remaining = 5 - (recentFails + 1)
+
+      if (recentFails + 1 >= 5) {
+        // Lock the account
+        const lockUntil = now + 15 * 60_000
+        set((s) => ({ ...s, lockout_until: lockUntil }))
+        logSecurityEvent('login_locked', email, 'Account locked after 5 failed login attempts in 15 minutes', 'critical')
+        return { ok: false, error: 'Account locked for 15 minutes due to too many failed attempts.', locked_until: lockUntil }
+      }
+
+      logSecurityEvent('login_failed', email, `Failed attempt (${recentFails + 1}/5)`, recentFails >= 2 ? 'warning' : 'info')
+      return { ok: false, error: `Invalid credentials. ${remaining} attempt${remaining > 1 ? 's' : ''} remaining before lockout.` }
+    }
+
+    // Success — clear lockout, record success
+    set((s) => ({
+      ...s,
+      login_attempts: [newAttempt, ...s.login_attempts].slice(0, 100),
+      lockout_until: undefined,
+      user: s.user || {
+        full_name: isAdmin ? 'Admin User' : 'Demo Investor',
+        email,
+        phone: '+254700000000',
+        referral_code: isAdmin ? 'CTADMIN' : 'CTDEMO1',
+        role: isAdmin ? 'admin' : 'user',
+        email_verified: isAdmin ? true : false,
+        two_factor_enabled: isAdmin ? true : false,
+      },
+    }))
+
+    // If 2FA enabled, signal that
+    if (state.user?.two_factor_enabled) {
+      return { ok: true, requires_2fa: true }
+    }
+
+    return { ok: true }
+  },
+
+  verify2FA(code: string): { ok: boolean; error?: string } {
+    // Demo: accept "123456" or "000000" as valid TOTP
+    if (code === '123456' || code === '000000') {
+      return { ok: true }
+    }
+    logSecurityEvent('login_failed', state.user?.email || 'unknown', 'Invalid 2FA code', 'warning')
+    return { ok: false, error: 'Invalid 2FA code. Try 123456 in demo mode.' }
+  },
+
+  enable2FA() {
+    const secret = Array.from({ length: 16 }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[Math.floor(Math.random() * 32)]).join('')
+    set((s) => s.user ? { ...s, user: { ...s.user, two_factor_enabled: true, two_factor_secret: secret } } : s)
+    logSecurityEvent('2fa_enabled', state.user?.email || 'unknown', 'Two-factor authentication enabled', 'info')
+  },
+
+  disable2FA() {
+    set((s) => s.user ? { ...s, user: { ...s.user, two_factor_enabled: false, two_factor_secret: undefined } } : s)
+    logSecurityEvent('2fa_disabled', state.user?.email || 'unknown', 'Two-factor authentication disabled', 'warning')
+  },
+
+  verifyEmail() {
+    set((s) => s.user ? { ...s, user: { ...s.user, email_verified: true } } : s)
+    logSecurityEvent('email_verified', state.user?.email || 'unknown', 'Email address verified', 'info')
+  },
+
+  /**
+   * Demo Google OAuth — in production this receives the JWT credential from
+   * Google Identity Services and decodes it server-side.
+   *
+   * @param mockProfile Optional override — when not provided we use a demo profile
+   */
+  loginWithGoogle(mockProfile?: { name: string; email: string; picture?: string }): {
+    ok: boolean
+    isNewUser: boolean
+    error?: string
+  } {
+    // Simulate decoded Google profile
+    const profile = mockProfile || {
+      name: 'Demo Google User',
+      email: 'demo.google@gmail.com',
+      picture: '',
+    }
+
+    const isAdmin = profile.email.toLowerCase().includes('admin')
+    const code = 'CT' + Math.random().toString(36).slice(2, 7).toUpperCase()
+
+    // Check if "existing" user (in real backend this is a lookup)
+    const isNewUser = !state.user || state.user.email !== profile.email.toLowerCase()
+
+    set((s) => ({
+      ...s,
+      user: {
+        full_name: profile.name,
+        email: profile.email.toLowerCase().trim(),
+        phone: s.user?.phone || '',  // phone may need to be added later
+        referral_code: s.user?.referral_code || code,
+        role: isAdmin ? 'admin' : 'user',
+        email_verified: true,        // Google emails are pre-verified
+        two_factor_enabled: s.user?.two_factor_enabled || false,
+      },
+      // Only initialise wallet on first login
+      wallet: isNewUser
+        ? { balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 }
+        : s.wallet,
+    }))
+
+    logSecurityEvent(
+      'email_verified',
+      profile.email,
+      isNewUser ? 'New account created via Google OAuth' : 'Logged in via Google OAuth',
+      'info'
+    )
+
+    return { ok: true, isNewUser }
+  },
+
+  clearLockout() {
+    set((s) => ({ ...s, lockout_until: undefined, login_attempts: [] }))
+    logSecurityEvent('login_unlocked', state.user?.email || 'admin@cointap.trade', 'Lockout manually cleared by admin', 'info')
   },
 
   logout() { set((s) => ({ ...s, user: null })) },
@@ -332,23 +497,93 @@ export const store = {
     })
   },
 
-  requestWithdrawal(amount: number, phone: string): { ok: boolean; error?: string } {
+  requestWithdrawal(amount: number, phone: string, twoFactorCode?: string): { ok: boolean; error?: string; requires_2fa?: boolean; requires_email_verification?: boolean } {
+    const now = Date.now()
+    const user = state.user
+
+    // 1. Email verification required for withdrawals
+    if (user && !user.email_verified) {
+      return { ok: false, error: 'Please verify your email before withdrawing.', requires_email_verification: true }
+    }
+
+    // 2. Account flagged?
+    if (user?.flagged) {
+      return { ok: false, error: `Account flagged for review: ${user.flag_reason || 'Suspicious activity'}. Contact support.` }
+    }
+
+    // 3. Basic validation
     if (amount < state.settings.min_withdrawal)
       return { ok: false, error: `Minimum withdrawal is ${formatKsh(state.settings.min_withdrawal)}` }
     if (state.wallet.balance < amount)
       return { ok: false, error: 'Insufficient wallet balance' }
+
+    // 4. 24-hour cooldown after a withdrawal (skip for very first withdrawal)
+    const COOLDOWN_MS = 60 * 60_000  // 1h cooldown demo (24h in production)
+    if (user?.last_withdrawal_at && (now - user.last_withdrawal_at) < COOLDOWN_MS) {
+      const minutesLeft = Math.ceil((COOLDOWN_MS - (now - user.last_withdrawal_at)) / 60_000)
+      return { ok: false, error: `Withdrawal cooldown active. Please wait ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}.` }
+    }
+
+    // 5. Daily limit check (Ksh 500,000 per 24h)
+    const DAILY_LIMIT = 500_000
+    const dayWindow = 24 * 60 * 60_000
+    let dailyTotal = user?.daily_withdrawal_total || 0
+    if (!user?.daily_withdrawal_reset_at || (now - user.daily_withdrawal_reset_at) > dayWindow) {
+      dailyTotal = 0
+    }
+    if ((dailyTotal + amount) > DAILY_LIMIT) {
+      const remaining = DAILY_LIMIT - dailyTotal
+      return { ok: false, error: `Daily withdrawal limit is ${formatKsh(DAILY_LIMIT)}. Remaining today: ${formatKsh(remaining)}.` }
+    }
+
+    // 6. 2FA required for amounts over Ksh 5,000
+    const TWOFA_THRESHOLD = 5_000
+    if (amount >= TWOFA_THRESHOLD) {
+      if (!twoFactorCode) {
+        return { ok: false, error: '2FA verification required for this amount.', requires_2fa: true }
+      }
+      const verify = store.verify2FA(twoFactorCode)
+      if (!verify.ok) {
+        return { ok: false, error: verify.error || 'Invalid 2FA code' }
+      }
+    }
+
+    // 7. Large-withdrawal flagging (50K+)
+    const LARGE_THRESHOLD = 50_000
+    if (amount >= LARGE_THRESHOLD) {
+      logSecurityEvent('large_withdrawal', user?.email || 'unknown',
+        `Large withdrawal of ${formatKsh(amount)} to ${phone}`, 'warning')
+    }
+
+    // 8. Rapid-withdrawal detection (3+ in last 10 minutes)
+    const tenMinsAgo = now - 10 * 60_000
+    const recent = state.withdrawals.filter((w) => w.requested_at > tenMinsAgo).length
+    if (recent >= 2) {
+      logSecurityEvent('rapid_withdrawals', user?.email || 'unknown',
+        `${recent + 1} withdrawals in 10 minutes — flagged for review`, 'critical')
+    }
+
+    // 9. All checks passed — process withdrawal
     set((s) => {
       const before = s.wallet.balance
       const after = before - amount
-      const w: Withdrawal = { id: uid(), amount, phone, status: 'pending', requested_at: Date.now() }
+      const w: Withdrawal = { id: uid(), amount, phone, status: 'pending', requested_at: now }
       const tx: WalletTx = {
         id: uid(), type: 'withdrawal', direction: 'out', amount,
         balance_before: before, balance_after: after,
         status: 'pending', reference: 'WD-' + w.id,
-        description: `Withdrawal to ${phone}`, created_at: Date.now(),
+        description: `Withdrawal to ${phone}`, created_at: now,
       }
       return {
         ...s,
+        user: s.user ? {
+          ...s.user,
+          last_withdrawal_at: now,
+          daily_withdrawal_total: dailyTotal + amount,
+          daily_withdrawal_reset_at: s.user.daily_withdrawal_reset_at && (now - s.user.daily_withdrawal_reset_at) < dayWindow
+            ? s.user.daily_withdrawal_reset_at
+            : now,
+        } : null,
         wallet: { ...s.wallet, balance: after, total_withdrawn: s.wallet.total_withdrawn + amount },
         withdrawals: [w, ...s.withdrawals],
         transactions: [tx, ...s.transactions],
@@ -550,6 +785,19 @@ function logActivity(action: string, target: string, details: string) {
     created_at: Date.now(),
   }
   set((s) => ({ ...s, activity_logs: [log, ...s.activity_logs].slice(0, 200) }))
+}
+
+// Helper: log security event
+function logSecurityEvent(type: SecurityEvent['type'], email: string, details: string, severity: SecurityEvent['severity']) {
+  const event: SecurityEvent = {
+    id: uid(),
+    type,
+    email,
+    details,
+    severity,
+    timestamp: Date.now(),
+  }
+  set((s) => ({ ...s, security_events: [event, ...s.security_events].slice(0, 200) }))
 }
 
 export function useStore<T>(selector: (s: State) => T): T {

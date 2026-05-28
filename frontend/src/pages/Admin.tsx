@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, Link } from 'react-router-dom'
 import {
   Shield, Users, Package, Droplets, BarChart3, Megaphone, Settings as SettingsIcon,
   ScrollText, Wallet, FileText, Search, Edit2, Trash2, UserX, UserCheck, Plus,
   Check, X, AlertTriangle, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
-  Activity, DollarSign, Clock,
+  Activity, DollarSign, Clock, ArrowLeft, Home,
 } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
-type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'analytics' | 'announcements' | 'settings' | 'logs'
+type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview', label: 'Overview', icon: BarChart3 },
@@ -19,6 +19,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'orders', label: 'Orders', icon: FileText },
   { key: 'withdrawals', label: 'Withdrawals', icon: Wallet },
   { key: 'analytics', label: 'Analytics', icon: TrendingUp },
+  { key: 'security', label: 'Security', icon: Shield },
   { key: 'announcements', label: 'Announcements', icon: Megaphone },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
   { key: 'logs', label: 'Activity Logs', icon: ScrollText },
@@ -31,7 +32,24 @@ export function Admin() {
   if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 pb-10">
+      {/* BACK NAVIGATION BAR */}
+      <div className="flex items-center justify-between flex-wrap gap-3 animate-slide-up">
+        <Link to="/dashboard"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:scale-105 active:scale-95 transition-all">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </Link>
+        <div className="flex items-center gap-2">
+          <Link to="/"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold glass hover:scale-105 active:scale-95 transition-all"
+            title="Go to site home">
+            <Home className="w-4 h-4" />
+            <span className="hidden sm:inline">Site</span>
+          </Link>
+        </div>
+      </div>
+
       {/* HEADER */}
       <div className="glass rounded-3xl p-6 sm:p-8 relative overflow-hidden animate-slide-up">
         <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-gold opacity-10 rounded-full blur-3xl" />
@@ -79,6 +97,7 @@ export function Admin() {
         {tab === 'orders' && <OrdersTab />}
         {tab === 'withdrawals' && <WithdrawalsTab />}
         {tab === 'analytics' && <AnalyticsTab />}
+        {tab === 'security' && <SecurityTab />}
         {tab === 'announcements' && <AnnouncementsTab />}
         {tab === 'settings' && <SettingsTab />}
         {tab === 'logs' && <LogsTab />}
@@ -1021,6 +1040,126 @@ function LogsTab() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── SECURITY MONITORING ──────────────────────────────────
+function SecurityTab() {
+  const events = useStore((s) => s.security_events)
+  const attempts = useStore((s) => s.login_attempts)
+  const lockoutUntil = useStore((s) => s.lockout_until)
+  const users = useStore((s) => s.admin_users)
+  const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all')
+
+  const filtered = filter === 'all' ? events : events.filter((e) => e.severity === filter)
+
+  const stats = {
+    failed_logins_24h: attempts.filter((a) => !a.success && a.timestamp > Date.now() - 86400000).length,
+    locked_accounts: lockoutUntil && lockoutUntil > Date.now() ? 1 : 0,
+    critical_events: events.filter((e) => e.severity === 'critical').length,
+    flagged_users: users.filter((u) => (u as any).flagged).length,
+  }
+
+  const severityColors = {
+    info: { bg: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'rgba(56,189,248,0.3)' },
+    warning: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: 'rgba(251,191,36,0.3)' },
+    critical: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="glass rounded-2xl p-4">
+          <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>Failed logins (24h)</div>
+          <div className="text-2xl font-bold font-mono text-white mt-1">{stats.failed_logins_24h}</div>
+        </div>
+        <div className="glass rounded-2xl p-4">
+          <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>Locked accounts</div>
+          <div className="text-2xl font-bold font-mono text-white mt-1">{stats.locked_accounts}</div>
+        </div>
+        <div className="glass rounded-2xl p-4">
+          <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>Critical events</div>
+          <div className="text-2xl font-bold font-mono mt-1" style={{ color: stats.critical_events > 0 ? '#ef4444' : 'white' }}>
+            {stats.critical_events}
+          </div>
+        </div>
+        <div className="glass rounded-2xl p-4">
+          <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>Flagged users</div>
+          <div className="text-2xl font-bold font-mono text-white mt-1">{stats.flagged_users}</div>
+        </div>
+      </div>
+
+      {/* Lockout control */}
+      {lockoutUntil && lockoutUntil > Date.now() && (
+        <div className="glass rounded-2xl p-5 flex items-center justify-between gap-3 flex-wrap"
+          style={{ border: '1px solid rgba(239,68,68,0.4)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-white text-sm">Account locked</div>
+              <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                Locked until {new Date(lockoutUntil).toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+          <button onClick={() => store.clearLockout()}
+            className="px-4 py-2 rounded-lg text-xs font-bold"
+            style={{ background: 'rgba(247,147,26,0.15)', color: 'var(--primary)', border: '1px solid rgba(247,147,26,0.3)' }}>
+            Unlock Now
+          </button>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="glass rounded-2xl p-2 flex gap-1 overflow-x-auto">
+        {(['all', 'critical', 'warning', 'info'] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)}
+            className="px-4 py-2 rounded-lg text-xs font-bold uppercase whitespace-nowrap"
+            style={{
+              background: filter === f ? 'var(--gradient-gold)' : 'transparent',
+              color: filter === f ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+            }}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {/* Event feed */}
+      <div className="glass rounded-2xl p-2 max-h-[600px] overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <Shield className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p style={{ color: 'var(--muted-foreground)' }}>No security events</p>
+          </div>
+        ) : filtered.map((e) => {
+          const c = severityColors[e.severity]
+          return (
+            <div key={e.id} className="p-3 rounded-lg flex items-start gap-3"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center"
+                style={{ background: c.bg, color: c.color }}>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-sm font-semibold text-white capitalize">{e.type.replace(/_/g, ' ')}</div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase"
+                    style={{ background: c.bg, color: c.color }}>{e.severity}</span>
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{e.details}</div>
+                <div className="text-[10px] mt-1 font-mono" style={{ color: 'rgba(136,146,164,0.6)' }}>
+                  {e.email} · {new Date(e.timestamp).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

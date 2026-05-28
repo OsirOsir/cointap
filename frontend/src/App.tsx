@@ -12,6 +12,7 @@ import { Referrals } from '@/pages/Referrals'
 import { Withdraw } from '@/pages/Withdraw'
 import { Admin } from '@/pages/Admin'
 import { Profile } from '@/pages/Profile'
+import { VerifyEmail } from '@/pages/VerifyEmail'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/withdraw" element={<Withdraw />} />
         <Route path="/admin" element={<Admin />} />
 

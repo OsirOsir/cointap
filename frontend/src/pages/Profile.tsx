@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { User as UserIcon, Mail, Phone, Lock, Check, Copy, Shield, AlertCircle, Save } from 'lucide-react'
+import { User as UserIcon, Mail, Phone, Lock, Check, Copy, Shield, AlertCircle, Save, Smartphone, ShieldCheck, ShieldOff } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { store, useStore } from '@/lib/cointap-store'
+import { PasswordStrength, getPasswordStrength, TwoFactorInput } from '@/components/cointap/Security'
 
 export function Profile() {
   const user = useStore((s) => s.user)
@@ -33,8 +35,224 @@ export function Profile() {
       </div>
 
       <PersonalInfoSection />
+      <EmailVerificationSection />
+      <TwoFactorSection />
       <SecuritySection />
       <ReferralSection />
+    </div>
+  )
+}
+
+// ─── EMAIL VERIFICATION STATUS ───────────────────────────────
+function EmailVerificationSection() {
+  const user = useStore((s) => s.user)!
+  const navigate = useNavigate()
+  const verified = user.email_verified
+
+  return (
+    <div className="glass rounded-2xl p-6 animate-slide-up">
+      <h3 className="font-bold text-white flex items-center gap-2 mb-4">
+        <Mail className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+        Email Verification
+      </h3>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap p-4 rounded-xl"
+        style={{
+          background: verified ? 'rgba(74,222,128,0.08)' : 'rgba(251,191,36,0.08)',
+          border: '1px solid ' + (verified ? 'rgba(74,222,128,0.25)' : 'rgba(251,191,36,0.3)'),
+        }}>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
+            style={{
+              background: verified ? 'rgba(74,222,128,0.2)' : 'rgba(251,191,36,0.2)',
+              color: verified ? '#4ade80' : '#fbbf24',
+            }}>
+            {verified ? <Check className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-white text-sm">
+              {verified ? 'Email verified' : 'Email not verified'}
+            </div>
+            <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
+              {user.email}
+            </div>
+          </div>
+        </div>
+        {!verified && (
+          <button onClick={() => navigate('/verify-email')}
+            className="px-4 py-2 rounded-lg text-xs font-bold flex-shrink-0"
+            style={{ background: '#fbbf24', color: '#0a0e1a' }}>
+            Verify Now
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── TWO-FACTOR AUTHENTICATION ───────────────────────────────
+function TwoFactorSection() {
+  const user = useStore((s) => s.user)!
+  const [step, setStep] = useState<'overview' | 'setup' | 'verify' | 'disable'>('overview')
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+
+  function confirmEnable(value: string) {
+    setError('')
+    const res = store.verify2FA(value)
+    if (!res.ok) { setError(res.error || 'Invalid code'); setCode(''); return }
+    store.enable2FA()
+    setStep('overview')
+    setCode('')
+  }
+
+  function confirmDisable(value: string) {
+    setError('')
+    const res = store.verify2FA(value)
+    if (!res.ok) { setError(res.error || 'Invalid code'); setCode(''); return }
+    store.disable2FA()
+    setStep('overview')
+    setCode('')
+  }
+
+  // Build a fake "secret" for the QR-style display in setup mode
+  const secret = user.two_factor_secret || 'JBSWY3DPEHPK3PXP'
+  const otpauthUrl = `otpauth://totp/CoinTap:${user.email}?secret=${secret}&issuer=CoinTap`
+
+  return (
+    <div className="glass rounded-2xl p-6 animate-slide-up">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h3 className="font-bold text-white flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+          Two-Factor Authentication
+        </h3>
+        {user.two_factor_enabled && (
+          <span className="text-[10px] px-2 py-1 rounded-full font-bold"
+            style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
+            ENABLED
+          </span>
+        )}
+      </div>
+
+      {step === 'overview' && (
+        <>
+          <p className="text-xs mb-4" style={{ color: 'var(--muted-foreground)' }}>
+            Add an extra layer of security. You'll be required to enter a 6-digit code from an
+            authenticator app (Google Authenticator, Authy, 1Password) when signing in or making withdrawals over Ksh 5,000.
+          </p>
+
+          <div className="flex items-center justify-between p-4 rounded-xl"
+            style={{ background: 'rgba(0,0,0,0.2)' }}>
+            <div className="flex items-center gap-3">
+              <Smartphone className="w-5 h-5" style={{ color: user.two_factor_enabled ? '#4ade80' : 'var(--muted-foreground)' }} />
+              <div>
+                <div className="text-sm font-semibold text-white">Authenticator App</div>
+                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  {user.two_factor_enabled ? 'Currently protecting your account' : 'Not configured'}
+                </div>
+              </div>
+            </div>
+            {user.two_factor_enabled ? (
+              <button onClick={() => setStep('disable')}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                Disable
+              </button>
+            ) : (
+              <button onClick={() => setStep('setup')}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold glow-gold"
+                style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+                Enable 2FA
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {step === 'setup' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl" style={{ background: 'rgba(247,147,26,0.05)', border: '1px solid rgba(247,147,26,0.15)' }}>
+            <div className="text-xs font-bold text-white mb-2">Step 1: Add to your authenticator app</div>
+            <div className="rounded-lg p-3 font-mono text-sm break-all"
+              style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--primary)' }}>
+              {secret}
+            </div>
+            <button onClick={() => navigator.clipboard?.writeText(secret)}
+              className="mt-2 text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--primary)' }}>
+              <Copy className="w-3 h-3" /> Copy secret
+            </button>
+            <p className="text-[11px] mt-2" style={{ color: 'var(--muted-foreground)' }}>
+              In production, this would also display as a scannable QR code.
+            </p>
+          </div>
+
+          <div>
+            <div className="text-xs font-bold text-white mb-2">Step 2: Enter the 6-digit code from your app</div>
+            <TwoFactorInput value={code} onChange={setCode} onComplete={confirmEnable} autoFocus />
+          </div>
+
+          {error && (
+            <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={() => { setStep('overview'); setCode(''); setError('') }}
+              className="px-4 py-3 rounded-xl text-sm font-bold"
+              style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--muted-foreground)' }}>
+              Cancel
+            </button>
+            <button onClick={() => confirmEnable(code)} disabled={code.length !== 6}
+              className="flex-1 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
+              style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+              Verify & Enable
+            </button>
+          </div>
+
+          <p className="text-[11px] text-center" style={{ color: 'var(--muted-foreground)' }}>
+            Demo: use code <code style={{ color: 'var(--primary)' }}>123456</code>
+          </p>
+        </div>
+      )}
+
+      {step === 'disable' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl flex items-start gap-3"
+            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <ShieldOff className="w-5 h-5 flex-shrink-0 text-red-400 mt-0.5" />
+            <div>
+              <div className="font-bold text-red-400 text-sm">Disable 2FA?</div>
+              <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                Your account will be less secure. Enter your current 2FA code to confirm.
+              </p>
+            </div>
+          </div>
+
+          <TwoFactorInput value={code} onChange={setCode} onComplete={confirmDisable} autoFocus />
+
+          {error && (
+            <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={() => { setStep('overview'); setCode(''); setError('') }}
+              className="flex-1 py-3 rounded-xl text-sm font-bold"
+              style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--muted-foreground)' }}>
+              Cancel
+            </button>
+            <button onClick={() => confirmDisable(code)} disabled={code.length !== 6}
+              className="flex-1 py-3 rounded-xl text-sm font-bold disabled:opacity-50"
+              style={{ background: '#ef4444', color: 'white' }}>
+              Confirm Disable
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -172,6 +390,11 @@ function SecuritySection() {
       setStatus({ type: 'error', message: 'New passwords do not match' })
       return
     }
+    const { score, label } = getPasswordStrength(next)
+    if (score < 3) {
+      setStatus({ type: 'error', message: `Password is "${label}". Please choose a stronger one.` })
+      return
+    }
     const res = store.changePassword(current, next)
     if (!res.ok) {
       setStatus({ type: 'error', message: res.error || 'Could not update password' })
@@ -199,8 +422,14 @@ function SecuritySection() {
           onChange={setCurrent} type="password" placeholder="••••••••" />
 
         <Field icon={Lock} label="New Password" value={next}
-          onChange={setNext} type="password" placeholder="At least 6 characters"
+          onChange={setNext} type="password" placeholder="At least 8 characters"
           helper="Use letters, numbers, and symbols for strength" />
+
+        {next && (
+          <div className="-mt-2">
+            <PasswordStrength password={next} />
+          </div>
+        )}
 
         <Field icon={Lock} label="Confirm New Password" value={confirm}
           onChange={setConfirm} type="password" placeholder="Repeat new password" />

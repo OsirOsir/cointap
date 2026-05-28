@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Logo } from './Logo'
 import { NodeBackground } from './NodeBackground'
-import { Shield, Wallet, Clock, TrendingUp } from 'lucide-react'
+import { Shield, Wallet, Clock, TrendingUp, ArrowLeft } from 'lucide-react'
 
 export function AuthShell({
   title,
@@ -17,8 +17,18 @@ export function AuthShell({
   return (
     <div className="min-h-screen flex flex-col lg:flex-row relative overflow-hidden">
       <NodeBackground />
+
+      {/* Back to home button — top-left, always visible */}
+      <Link to="/"
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:scale-105 active:scale-95 transition-all"
+        style={{ color: 'var(--foreground)' }}>
+        <ArrowLeft className="w-4 h-4" />
+        <span className="hidden sm:inline">Back to Home</span>
+        <span className="sm:hidden">Home</span>
+      </Link>
+
       {/* Form side */}
-      <div className="relative flex-1 flex items-center justify-center p-4 sm:p-8">
+      <div className="relative flex-1 flex items-center justify-center p-4 sm:p-8 pt-20 sm:pt-24">
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-6 lg:hidden">
             <Link to="/"><Logo /></Link>
