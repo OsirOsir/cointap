@@ -11,6 +11,7 @@ import { Orders } from '@/pages/Orders'
 import { Referrals } from '@/pages/Referrals'
 import { Withdraw } from '@/pages/Withdraw'
 import { Admin } from '@/pages/Admin'
+import { Profile } from '@/pages/Profile'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/plans" element={<Plans />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/referrals" element={<Referrals />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
 
         {/* Fallback */}

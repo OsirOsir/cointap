@@ -1,540 +1,1026 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Users, Wallet, Activity, ArrowDownToLine, TrendingUp, Droplets, Settings, Plus, Check, X, RefreshCw, Zap } from 'lucide-react'
-import { formatKsh, store, useStore, type Plan } from '@/lib/cointap-store'
-import { Logo } from '@/components/cointap/Logo'
-import { NodeBackground } from '@/components/cointap/NodeBackground'
-import { Countdown } from '@/components/cointap/Countdown'
+import { useState, useMemo } from 'react'
+import { Navigate } from 'react-router-dom'
+import {
+  Shield, Users, Package, Droplets, BarChart3, Megaphone, Settings as SettingsIcon,
+  ScrollText, Wallet, FileText, Search, Edit2, Trash2, UserX, UserCheck, Plus,
+  Check, X, AlertTriangle, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
+  Activity, DollarSign, Clock,
+} from 'lucide-react'
+import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
-type Tab = 'overview' | 'orders' | 'withdrawals' | 'plans' | 'pool' | 'settings'
+type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'analytics' | 'announcements' | 'settings' | 'logs'
+
+const TABS: { key: Tab; label: string; icon: any }[] = [
+  { key: 'overview', label: 'Overview', icon: BarChart3 },
+  { key: 'users', label: 'Users', icon: Users },
+  { key: 'plans', label: 'Plans', icon: Package },
+  { key: 'pool', label: 'Pool', icon: Droplets },
+  { key: 'orders', label: 'Orders', icon: FileText },
+  { key: 'withdrawals', label: 'Withdrawals', icon: Wallet },
+  { key: 'analytics', label: 'Analytics', icon: TrendingUp },
+  { key: 'announcements', label: 'Announcements', icon: Megaphone },
+  { key: 'settings', label: 'Settings', icon: SettingsIcon },
+  { key: 'logs', label: 'Activity Logs', icon: ScrollText },
+]
 
 export function Admin() {
-  const [tab, setTab] = useState<Tab>('overview')
   const user = useStore((s) => s.user)
+  const [tab, setTab] = useState<Tab>('overview')
 
-  const tabs: { k: Tab; l: string; I: any }[] = [
-    { k: 'overview', l: 'Overview', I: TrendingUp },
-    { k: 'orders', l: 'Orders', I: Activity },
-    { k: 'withdrawals', l: 'Withdrawals', I: ArrowDownToLine },
-    { k: 'plans', l: 'Plans', I: Wallet },
-    { k: 'pool', l: 'Pool', I: Droplets },
-    { k: 'settings', l: 'Settings', I: Settings },
-  ]
+  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />
 
   return (
-    <div className="min-h-screen">
-      <header className="glass sticky top-0 z-40" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Logo />
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
-              style={{ background: 'rgba(247,147,26,0.15)', color: 'var(--primary)' }}>Admin</span>
+    <div className="space-y-6 pb-10">
+      {/* HEADER */}
+      <div className="glass rounded-3xl p-6 sm:p-8 relative overflow-hidden animate-slide-up">
+        <div className="absolute -top-20 -right-20 w-60 h-60 bg-gradient-gold opacity-10 rounded-full blur-3xl" />
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center glow-gold"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            <Shield className="w-7 h-7" />
           </div>
-          <Link to="/dashboard" className="text-sm hover:text-white transition-colors"
-            style={{ color: 'var(--muted-foreground)' }}>← User View</Link>
+          <div>
+            <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+              Administrator Console
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white">CoinTap Admin</h1>
+          </div>
         </div>
-      </header>
+      </div>
 
-      <div className="max-w-7xl mx-auto p-4 sm:p-6">
-        {/* Tab bar */}
-        <div className="flex gap-1 p-1 glass rounded-xl mb-6 overflow-x-auto">
-          {tabs.map((t) => (
-            <button key={t.k} onClick={() => setTab(t.k)}
-              className="px-3 py-2 rounded-xl text-sm flex items-center gap-1.5 whitespace-nowrap transition font-medium"
-              style={tab === t.k
-                ? { background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }
-                : { color: 'var(--muted-foreground)' }}>
-              <t.I className="w-3.5 h-3.5" /> {t.l}
-            </button>
-          ))}
+      {/* TABS */}
+      <div className="glass rounded-2xl p-2 overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {TABS.map((t) => {
+            const Icon = t.icon
+            const active = tab === t.key
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap flex items-center gap-2 transition-all"
+                style={{
+                  background: active ? 'var(--gradient-gold)' : 'transparent',
+                  color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+                }}>
+                <Icon className="w-4 h-4" />
+                {t.label}
+              </button>
+            )
+          })}
         </div>
+      </div>
 
-        {tab === 'overview' && <Overview />}
-        {tab === 'orders' && <OrdersTab />}
-        {tab === 'withdrawals' && <WithdrawalsTab />}
+      {/* TAB CONTENT */}
+      <div className="animate-slide-up">
+        {tab === 'overview' && <OverviewTab />}
+        {tab === 'users' && <UsersTab />}
         {tab === 'plans' && <PlansTab />}
         {tab === 'pool' && <PoolTab />}
+        {tab === 'orders' && <OrdersTab />}
+        {tab === 'withdrawals' && <WithdrawalsTab />}
+        {tab === 'analytics' && <AnalyticsTab />}
+        {tab === 'announcements' && <AnnouncementsTab />}
         {tab === 'settings' && <SettingsTab />}
+        {tab === 'logs' && <LogsTab />}
       </div>
     </div>
   )
 }
 
-function Overview() {
-  const wallet = useStore((s) => s.wallet)
+// ─── OVERVIEW ─────────────────────────────────────────────
+function OverviewTab() {
+  const users = useStore((s) => s.admin_users)
   const orders = useStore((s) => s.orders)
-  const wds = useStore((s) => s.withdrawals)
+  const withdrawals = useStore((s) => s.withdrawals)
   const pool = useStore((s) => s.pool)
 
-  const stats = [
-    { I: Users, l: 'Total Users', v: '12,418', a: '+218 today' },
-    { I: Wallet, l: 'Wallet Balances', v: formatKsh(8_423_120 + wallet.balance), a: '' },
-    { I: ArrowDownToLine, l: 'Total Deposits', v: formatKsh(24_120_000), a: '' },
-    { I: TrendingUp, l: 'Total Withdrawn', v: formatKsh(18_200_000), a: '' },
-    { I: Activity, l: 'Active Investments', v: String(orders.filter(o => o.status === 'active').length + 348), a: '' },
-    { I: Droplets, l: 'Public Pool', v: formatKsh(pool.public_pool_balance), a: '' },
-  ]
+  const totalDeposited = users.reduce((sum, u) => sum + u.total_deposited, 0)
+  const totalEarned = users.reduce((sum, u) => sum + u.total_earned, 0)
+  const activeOrders = orders.filter((o) => o.status === 'active').length
+  const pendingWithdrawals = withdrawals.filter((w) => w.status === 'pending').length
 
-  const pendingWds = wds.filter(w => w.status === 'pending')
+  const stats = [
+    { label: 'Total Users', value: users.length, icon: Users, color: 'rgba(74,222,128,0.2)' },
+    { label: 'Total Deposits', value: formatKsh(totalDeposited), icon: ArrowDownToLine, color: 'rgba(247,147,26,0.2)' },
+    { label: 'Total Earned', value: formatKsh(totalEarned), icon: TrendingUp, color: 'rgba(124,58,237,0.2)' },
+    { label: 'Active Orders', value: activeOrders, icon: Activity, color: 'rgba(251,191,36,0.2)' },
+    { label: 'Pending Withdrawals', value: pendingWithdrawals, icon: Clock, color: 'rgba(239,68,68,0.2)' },
+    { label: 'Public Pool', value: formatKsh(pool.public_pool_balance), icon: Droplets, color: 'rgba(56,189,248,0.2)' },
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <div className="glass rounded-2xl p-6 relative overflow-hidden">
-        <NodeBackground />
-        <div className="relative">
-          <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Platform Overview</div>
-          <h1 className="text-2xl sm:text-3xl font-bold mt-1 text-white">CoinTap Operations</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>Live treasury, pool, and withdrawal queue</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {stats.map((s, i) => (
-          <div key={i} className="glass rounded-xl p-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        {stats.map((s) => (
+          <div key={s.label} className="glass rounded-2xl p-5 group hover:scale-105 transition-transform">
             <div className="flex items-start justify-between">
-              <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>{s.l}</div>
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(247,147,26,0.12)', color: 'var(--primary)' }}>
-                <s.I className="w-4 h-4" />
+              <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+                {s.label}
+              </div>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: s.color, color: 'var(--primary)' }}>
+                <s.icon className="w-5 h-5" />
               </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold font-mono mt-2 text-white">{s.v}</div>
-            {s.a && <div className="text-[11px] text-green-400 mt-1">{s.a}</div>}
+            <div className="text-2xl sm:text-3xl font-bold font-mono text-white mt-3">{s.value}</div>
           </div>
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        {/* Pool */}
-        <div className="glass rounded-2xl p-5">
-          <h3 className="font-semibold mb-4 text-white">Pool Management</h3>
-          <PoolBars />
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <button onClick={() => store.adminReleaseBatch()}
-              className="py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
-              style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-              Release Batch
-            </button>
-            <button className="py-2.5 rounded-xl glass text-sm font-semibold text-white">Settings</button>
-          </div>
-        </div>
-
-        {/* Pending withdrawals */}
-        <div className="glass rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-white">Withdrawal Queue</h3>
-            <span className="text-[10px] px-2 py-1 rounded uppercase font-bold"
-              style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>
-              {pendingWds.length} pending
-            </span>
-          </div>
-          {pendingWds.length === 0 ? (
-            <div className="text-sm text-center py-6" style={{ color: 'var(--muted-foreground)' }}>No pending withdrawals</div>
-          ) : (
-            <div className="space-y-2">
-              {pendingWds.slice(0, 4).map(w => (
-                <div key={w.id} className="flex items-center justify-between p-3 rounded-xl"
-                  style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div>
-                    <div className="font-mono text-sm text-white">{formatKsh(w.amount)}</div>
-                    <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{w.phone}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => store.adminApproveWithdrawal(w.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                      style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>Approve</button>
-                    <button onClick={() => store.adminRejectWithdrawal(w.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                      style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>Reject</button>
-                  </div>
-                </div>
-              ))}
+      {/* Quick actions */}
+      <div className="glass rounded-2xl p-6">
+        <h3 className="font-bold text-white mb-4">Quick Actions</h3>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <button onClick={() => store.adminReleaseBatch()}
+            className="p-4 rounded-xl text-left hover:scale-105 transition-transform"
+            style={{ background: 'rgba(247,147,26,0.1)', border: '1px solid rgba(247,147,26,0.3)' }}>
+            <Droplets className="w-5 h-5 mb-2" style={{ color: 'var(--primary)' }} />
+            <div className="text-sm font-semibold text-white">Release Pool Batch</div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+              Move funds from reserve → public
             </div>
-          )}
+          </button>
+          <button onClick={() => alert('Maintenance toggled (demo)')}
+            className="p-4 rounded-xl text-left hover:scale-105 transition-transform"
+            style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)' }}>
+            <SettingsIcon className="w-5 h-5 mb-2" style={{ color: '#7c3aed' }} />
+            <div className="text-sm font-semibold text-white">Maintenance Mode</div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+              Pause platform temporarily
+            </div>
+          </button>
+          <button onClick={() => alert('Broadcast scheduled (demo)')}
+            className="p-4 rounded-xl text-left hover:scale-105 transition-transform"
+            style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)' }}>
+            <Megaphone className="w-5 h-5 mb-2" style={{ color: '#4ade80' }} />
+            <div className="text-sm font-semibold text-white">Broadcast Message</div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+              Notify all users instantly
+            </div>
+          </button>
         </div>
       </div>
     </div>
   )
 }
 
-function PoolBars() {
-  const pool = useStore((s) => s.pool)
-  const total = pool.public_pool_balance + pool.reserve_pool_balance
-  const publicPct = total > 0 ? Math.round((pool.public_pool_balance / total) * 100) : 0
-  const reservePct = 100 - publicPct
+// ─── USERS MANAGEMENT ─────────────────────────────────────
+function UsersTab() {
+  const users = useStore((s) => s.admin_users)
+  const [query, setQuery] = useState('')
+  const [editing, setEditing] = useState<AdminUser | null>(null)
 
-  return (
-    <div className="space-y-4">
-      <div>
-        <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
-          <span>Public Pool</span><span className="font-mono text-white">{formatKsh(pool.public_pool_balance)}</span>
-        </div>
-        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.4)' }}>
-          <div className="h-full rounded-full" style={{ width: `${publicPct}%`, background: 'var(--gradient-gold)' }} />
-        </div>
-      </div>
-      <div>
-        <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
-          <span>Reserve Pool</span><span className="font-mono text-white">{formatKsh(pool.reserve_pool_balance)}</span>
-        </div>
-        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.4)' }}>
-          <div className="h-full rounded-full" style={{ width: `${reservePct}%`, background: 'linear-gradient(90deg, #7c3aed, #f7931a)' }} />
-        </div>
-      </div>
-      <div className="flex justify-between text-xs" style={{ color: 'var(--muted-foreground)' }}>
-        <span>Sold-out Floor</span>
-        <span className="font-mono text-white">{formatKsh(pool.sold_out_floor)}</span>
-      </div>
-    </div>
+  const filtered = users.filter((u) =>
+    u.full_name.toLowerCase().includes(query.toLowerCase()) ||
+    u.email.toLowerCase().includes(query.toLowerCase()) ||
+    u.phone.includes(query)
   )
-}
-
-function OrdersTab() {
-  const orders = useStore((s) => s.orders)
-  const [filter, setFilter] = useState<string>('all')
-  const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter)
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">All Orders</h2>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-sm font-medium"
-          style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}>
-          <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="settled">Settled</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+      <div className="glass rounded-2xl p-4 flex items-center gap-3">
+        <Search className="w-5 h-5" style={{ color: 'var(--muted-foreground)' }} />
+        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name, email, or phone..."
+          className="flex-1 bg-transparent text-white outline-none" />
+        <span className="text-xs px-3 py-1 rounded-lg" style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+          {filtered.length} users
+        </span>
       </div>
-      {filtered.length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No orders</div>
-      ) : (
-        <div className="glass rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <tr className="text-xs uppercase text-left" style={{ color: 'var(--muted-foreground)' }}>
-                  <th className="px-4 py-3">Order</th>
-                  <th className="px-4 py-3">Plan</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
-                  <th className="px-4 py-3 text-right">Return</th>
-                  <th className="px-4 py-3">Countdown</th>
-                  <th className="px-4 py-3 text-right">Status</th>
-                  <th className="px-4 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((o) => (
-                  <tr key={o.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <td className="px-4 py-3 font-mono text-xs text-white">#{o.id}</td>
-                    <td className="px-4 py-3 text-white">{o.plan_name}</td>
-                    <td className="px-4 py-3 text-right font-mono text-white">{formatKsh(o.amount_invested)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-400">{formatKsh(o.expected_return)}</td>
-                    <td className="px-4 py-3">
-                      {o.status === 'active' ? <Countdown target={o.matures_at} /> : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-[10px] px-2 py-0.5 rounded uppercase font-bold"
-                        style={o.status === 'active'
-                          ? { background: 'rgba(247,147,26,0.15)', color: 'var(--primary)' }
-                          : { background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
-                        {o.status}
+
+      <div className="space-y-2">
+        {filtered.map((u) => (
+          <div key={u.id} className="glass rounded-2xl p-4 hover:scale-[1.01] transition-transform">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white"
+                  style={{ background: 'var(--gradient-gold)' }}>
+                  {u.full_name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
+                </div>
+                <div>
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    {u.full_name}
+                    {u.role === 'admin' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(247,147,26,0.2)', color: 'var(--primary)' }}>
+                        ADMIN
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {o.status === 'active' && (
-                        <button onClick={() => store.adminForceMaturity(o.id)}
-                          className="text-xs px-2 py-1 rounded-lg flex items-center gap-1 ml-auto"
-                          style={{ background: 'rgba(247,147,26,0.12)', color: 'var(--primary)' }}>
-                          <Zap className="w-3 h-3" /> Force Mature
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function WithdrawalsTab() {
-  const wds = useStore((s) => s.withdrawals)
-  const [filter, setFilter] = useState('all')
-  const filtered = filter === 'all' ? wds : wds.filter(w => w.status === filter)
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Withdrawal Queue</h2>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-sm"
-          style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}>
-          <option value="all">All</option>
-          <option value="pending">Pending</option>
-          <option value="processing">Processing</option>
-          <option value="paid">Paid</option>
-          <option value="rejected">Rejected</option>
-        </select>
-      </div>
-      {filtered.length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No withdrawals</div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(w => (
-            <div key={w.id} className="glass rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <div className="font-mono font-bold text-white">{formatKsh(w.amount)}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{w.phone}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                  {new Date(w.requested_at).toLocaleDateString()}
-                </div>
-                {w.mpesa_reference && (
-                  <div className="text-xs font-mono mt-0.5" style={{ color: 'var(--primary)' }}>Ref: {w.mpesa_reference}</div>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] px-2 py-1 rounded uppercase font-bold"
-                  style={
-                    w.status === 'paid' ? { background: 'rgba(74,222,128,0.15)', color: '#4ade80' } :
-                    w.status === 'rejected' ? { background: 'rgba(239,68,68,0.15)', color: '#ef4444' } :
-                    w.status === 'processing' ? { background: 'rgba(247,147,26,0.15)', color: 'var(--primary)' } :
-                    { background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }
-                  }>{w.status}</span>
-                {w.status === 'pending' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => store.adminApproveWithdrawal(w.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
-                      style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
-                      <Check className="w-3 h-3" /> Approve
-                    </button>
-                    <button onClick={() => store.adminRejectWithdrawal(w.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
-                      style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
-                      <X className="w-3 h-3" /> Reject
-                    </button>
+                    )}
+                    {u.status === 'suspended' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                        SUSPENDED
+                      </span>
+                    )}
                   </div>
-                )}
+                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    {u.email} · {u.phone}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="text-right">
+                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Wallet</div>
+                  <div className="font-mono font-bold text-white">{formatKsh(u.wallet_balance)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Earned</div>
+                  <div className="font-mono font-bold text-green-400">{formatKsh(u.total_earned)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Orders</div>
+                  <div className="font-mono font-bold text-white">{u.total_orders}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setEditing(u)}
+                  className="p-2 rounded-lg hover:opacity-80" title="Edit wallet"
+                  style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button onClick={() => store.adminToggleUserStatus(u.id)}
+                  className="p-2 rounded-lg hover:opacity-80" title={u.status === 'active' ? 'Suspend' : 'Activate'}
+                  style={{ background: u.status === 'active' ? 'rgba(239,68,68,0.1)' : 'rgba(74,222,128,0.1)', color: u.status === 'active' ? '#ef4444' : '#4ade80' }}>
+                  {u.status === 'active' ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                </button>
+                <button onClick={() => store.adminPromoteUser(u.id)}
+                  className="p-2 rounded-lg hover:opacity-80" title="Toggle admin role"
+                  style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed' }}>
+                  <Shield className="w-4 h-4" />
+                </button>
+                <button onClick={() => { if (confirm(`Delete ${u.full_name}?`)) store.adminDeleteUser(u.id) }}
+                  className="p-2 rounded-lg hover:opacity-80" title="Delete user"
+                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
+
+      {editing && <WalletAdjustModal user={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }
 
-function PlansTab() {
-  const plans = useStore((s) => s.plans)
-  const [showAdd, setShowAdd] = useState(false)
-  const [newPlan, setNewPlan] = useState({ name: '', duration_days: 4, profit_percent: 30, min_amount: 500, max_amount: 20000 })
+function WalletAdjustModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const [amount, setAmount] = useState('0')
+  const [reason, setReason] = useState('')
+  const a = parseFloat(amount) || 0
 
-  function addPlan(e: React.FormEvent) {
-    e.preventDefault()
-    store.adminAddPlan({ ...newPlan, is_active: true })
-    setShowAdd(false)
-    setNewPlan({ name: '', duration_days: 4, profit_percent: 30, min_amount: 500, max_amount: 20000 })
+  function submit() {
+    if (a === 0 || !reason) return
+    store.adminCreditUserWallet(user.id, a, reason)
+    onClose()
   }
 
   return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }} onClick={onClose}>
+      <div className="glass rounded-3xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-xl font-bold text-white">Adjust Wallet</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{user.full_name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <X className="w-4 h-4 text-white" />
+          </button>
+        </div>
+
+        <div className="rounded-xl p-3 mb-4" style={{ background: 'rgba(0,0,0,0.3)' }}>
+          <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Current Balance</div>
+          <div className="font-mono font-bold text-white text-xl">{formatKsh(user.wallet_balance)}</div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Amount (+ to credit, − to debit)
+            </label>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+
+          <div className="flex gap-2">
+            {[1000, 5000, 10000, -1000].map((v) => (
+              <button key={v} onClick={() => setAmount(String(a + v))}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                {v > 0 ? `+${v / 1000}K` : `${v / 1000}K`}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Reason</label>
+            <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Bonus, refund, correction"
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+
+          <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>New Balance</span>
+            <span className="font-mono font-bold text-green-400">{formatKsh(user.wallet_balance + a)}</span>
+          </div>
+
+          <button onClick={submit} disabled={a === 0 || !reason}
+            className="w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-50"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            Apply Adjustment
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── PLANS MANAGEMENT ─────────────────────────────────────
+function PlansTab() {
+  const plans = useStore((s) => s.plans)
+  const [editing, setEditing] = useState<Plan | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Investment Plans</h2>
-        <button onClick={() => setShowAdd(!showAdd)}
-          className="px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2"
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-bold text-white">All Plans ({plans.length})</h3>
+        <button onClick={() => setCreating(true)}
+          className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
           style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-          <Plus className="w-4 h-4" /> Add Plan
+          <Plus className="w-4 h-4" /> New Plan
         </button>
       </div>
 
-      {showAdd && (
-        <form onSubmit={addPlan} className="glass rounded-2xl p-5 space-y-3">
-          <h3 className="font-semibold text-white">New Plan</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Plan Name</label>
-              <input value={newPlan.name} onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })} required
-                className="mt-1 w-full px-3 py-2 rounded-xl text-sm text-white"
-                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
-            </div>
-            <div>
-              <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Duration (days)</label>
-              <input type="number" value={newPlan.duration_days} onChange={(e) => setNewPlan({ ...newPlan, duration_days: +e.target.value })}
-                className="mt-1 w-full px-3 py-2 rounded-xl text-sm text-white"
-                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
-            </div>
-            <div>
-              <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Profit %</label>
-              <input type="number" value={newPlan.profit_percent} onChange={(e) => setNewPlan({ ...newPlan, profit_percent: +e.target.value })}
-                className="mt-1 w-full px-3 py-2 rounded-xl text-sm text-white"
-                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
-            </div>
-            <div>
-              <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Min Amount</label>
-              <input type="number" value={newPlan.min_amount} onChange={(e) => setNewPlan({ ...newPlan, min_amount: +e.target.value })}
-                className="mt-1 w-full px-3 py-2 rounded-xl text-sm text-white"
-                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="submit" className="px-4 py-2 rounded-xl text-sm font-semibold"
-              style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>Save Plan</button>
-            <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl text-sm glass text-white">Cancel</button>
-          </div>
-        </form>
-      )}
-
-      <div className="space-y-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {plans.map((p) => (
-          <div key={p.id} className="glass rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-semibold text-white">{p.name}</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
-                {p.duration_days} days · {p.profit_percent}% · {formatKsh(p.min_amount)} – {formatKsh(p.max_amount)}
+          <div key={p.id} className="glass rounded-2xl p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <div className="text-sm font-bold text-white">{p.name}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                  ID: {p.id}
+                </div>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${p.is_active ? 'text-green-400' : 'text-red-400'}`}
+                style={{ background: p.is_active ? 'rgba(74,222,128,0.15)' : 'rgba(239,68,68,0.15)' }}>
+                {p.is_active ? 'ACTIVE' : 'INACTIVE'}
+              </span>
+            </div>
+
+            <div className="text-3xl font-bold text-gradient-gold font-mono">{p.profit_percent}%</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+              in {p.duration_days} days
+            </div>
+
+            <div className="mt-4 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--muted-foreground)' }}>Min</span>
+                <span className="font-mono text-white">{formatKsh(p.min_amount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--muted-foreground)' }}>Max</span>
+                <span className="font-mono text-white">{formatKsh(p.max_amount)}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] px-2 py-1 rounded uppercase font-bold"
-                style={p.is_active
-                  ? { background: 'rgba(74,222,128,0.15)', color: '#4ade80' }
-                  : { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
-                {p.is_active ? 'Active' : 'Disabled'}
-              </span>
+
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setEditing(p)}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                Edit
+              </button>
               <button onClick={() => store.adminUpdatePlan(p.id, { is_active: !p.is_active })}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold glass text-white">
+                className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed' }}>
                 {p.is_active ? 'Disable' : 'Enable'}
+              </button>
+              <button onClick={() => { if (confirm(`Delete ${p.name}?`)) store.adminDeletePlan(p.id) }}
+                className="p-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
         ))}
       </div>
+
+      {(editing || creating) && (
+        <PlanEditModal plan={editing} onClose={() => { setEditing(null); setCreating(false) }} />
+      )}
     </div>
   )
 }
 
-function PoolTab() {
-  const pool = useStore((s) => s.pool)
-  const [pub, setPub] = useState(String(pool.public_pool_balance))
-  const [res, setRes] = useState(String(pool.reserve_pool_balance))
-  const [floor, setFloor] = useState(String(pool.sold_out_floor))
-  const [batch, setBatch] = useState(String(pool.batch_size))
-  const [saved, setSaved] = useState(false)
+function PlanEditModal({ plan, onClose }: { plan: Plan | null; onClose: () => void }) {
+  const [form, setForm] = useState({
+    name: plan?.name || '',
+    duration_days: plan?.duration_days || 7,
+    profit_percent: plan?.profit_percent || 25,
+    min_amount: plan?.min_amount || 500,
+    max_amount: plan?.max_amount || 50000,
+    is_active: plan?.is_active ?? true,
+  })
 
-  function save(e: React.FormEvent) {
-    e.preventDefault()
-    store.adminUpdatePool({
-      public_pool_balance: parseFloat(pub),
-      reserve_pool_balance: parseFloat(res),
-      sold_out_floor: parseFloat(floor),
-      batch_size: parseFloat(batch),
-    })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  function submit() {
+    if (!form.name) return
+    if (plan) {
+      store.adminUpdatePlan(plan.id, form)
+    } else {
+      store.adminAddPlan(form)
+    }
+    onClose()
   }
 
-  const inp = (val: string, set: (v: string) => void, label: string) => (
-    <div>
-      <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</label>
-      <input type="number" value={val} onChange={(e) => set(e.target.value)}
-        className="mt-1 w-full px-3 py-2.5 rounded-xl text-sm text-white font-mono"
-        style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }} onClick={onClose}>
+      <div className="glass rounded-3xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white">{plan ? 'Edit Plan' : 'New Plan'}</h3>
+          <button onClick={onClose} className="p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <X className="w-4 h-4 text-white" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {[
+            { label: 'Plan Name', key: 'name', type: 'text' },
+            { label: 'Duration (days)', key: 'duration_days', type: 'number' },
+            { label: 'Profit Percent (%)', key: 'profit_percent', type: 'number' },
+            { label: 'Minimum Amount (Ksh)', key: 'min_amount', type: 'number' },
+            { label: 'Maximum Amount (Ksh)', key: 'max_amount', type: 'number' },
+          ].map((f) => (
+            <div key={f.key}>
+              <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+                {f.label}
+              </label>
+              <input type={f.type} value={(form as any)[f.key]}
+                onChange={(e) => setForm({ ...form, [f.key]: f.type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value })}
+                className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+            </div>
+          ))}
+
+          <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+            <input type="checkbox" checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+              className="w-4 h-4" />
+            Active (visible to users)
+          </label>
+
+          <button onClick={submit}
+            className="w-full py-3 rounded-xl font-bold glow-gold"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            {plan ? 'Save Changes' : 'Create Plan'}
+          </button>
+        </div>
+      </div>
     </div>
   )
+}
+
+// ─── POOL MANAGEMENT ──────────────────────────────────────
+function PoolTab() {
+  const pool = useStore((s) => s.pool)
+  const [injectAmount, setInjectAmount] = useState('100000')
+
+  const inject = (target: 'public' | 'reserve') => {
+    const a = parseFloat(injectAmount) || 0
+    if (a > 0) store.adminInjectFunds(a, target)
+  }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Pool Management</h2>
-        <button onClick={() => store.adminReleaseBatch()}
-          className="px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2"
-          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-          <RefreshCw className="w-4 h-4" /> Release Batch
-        </button>
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="glass rounded-2xl p-6 relative overflow-hidden">
+          <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-gold opacity-10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+              Public Pool
+            </div>
+            <div className="text-3xl font-bold text-gradient-gold font-mono mt-2">{formatKsh(pool.public_pool_balance)}</div>
+            <button onClick={() => inject('public')}
+              className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+              + Inject to Public
+            </button>
+          </div>
+        </div>
+
+        <div className="glass rounded-2xl p-6 relative overflow-hidden">
+          <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-purple opacity-10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+              Reserve Pool
+            </div>
+            <div className="text-3xl font-bold font-mono text-white mt-2">{formatKsh(pool.reserve_pool_balance)}</div>
+            <button onClick={() => inject('reserve')}
+              className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: 'rgba(124,58,237,0.2)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.4)' }}>
+              + Inject to Reserve
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="glass rounded-2xl p-5">
-        <PoolBars />
+        <label className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+          Inject Amount (Ksh)
+        </label>
+        <input type="number" value={injectAmount} onChange={(e) => setInjectAmount(e.target.value)}
+          className="mt-2 w-full px-4 py-3 rounded-xl text-white font-mono text-lg font-bold"
+          style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(247,147,26,0.2)' }} />
+        <div className="flex gap-2 mt-3">
+          {[100000, 500000, 1000000, 5000000].map((v) => (
+            <button key={v} onClick={() => setInjectAmount(String(v))}
+              className="flex-1 py-2 rounded-lg text-xs font-semibold"
+              style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+              {(v / 1000)}K
+            </button>
+          ))}
+        </div>
       </div>
 
-      <form onSubmit={save} className="glass rounded-2xl p-5 space-y-4">
-        <h3 className="font-semibold text-white">Update Pool Settings</h3>
+      <div className="glass rounded-2xl p-5">
+        <h3 className="font-bold text-white mb-4">Pool Configuration</h3>
         <div className="grid sm:grid-cols-2 gap-3">
-          {inp(pub, setPub, 'Public Pool Balance')}
-          {inp(res, setRes, 'Reserve Pool Balance')}
-          {inp(floor, setFloor, 'Sold-out Floor')}
-          {inp(batch, setBatch, 'Batch Release Size')}
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Sold-Out Floor
+            </label>
+            <input type="number" value={pool.sold_out_floor}
+              onChange={(e) => store.adminUpdatePool({ sold_out_floor: parseFloat(e.target.value) || 0 })}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Batch Size
+            </label>
+            <input type="number" value={pool.batch_size}
+              onChange={(e) => store.adminUpdatePool({ batch_size: parseFloat(e.target.value) || 0 })}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
         </div>
-        <button type="submit"
-          className="px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
-          style={{ background: saved ? 'rgba(74,222,128,0.2)' : 'var(--gradient-gold)', color: saved ? '#4ade80' : 'var(--primary-foreground)' }}>
-          <Check className="w-4 h-4" /> {saved ? 'Saved!' : 'Save Settings'}
+        <button onClick={() => store.adminReleaseBatch()}
+          className="mt-4 w-full py-3 rounded-xl font-bold glow-gold"
+          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+          Release Batch ({formatKsh(pool.batch_size)})
         </button>
-      </form>
+      </div>
     </div>
   )
 }
 
-function SettingsTab() {
-  const settings = useStore((s) => s.settings)
-  const [f, setF] = useState(settings)
-  const [saved, setSaved] = useState(false)
+// ─── ORDERS MANAGEMENT ────────────────────────────────────
+function OrdersTab() {
+  const orders = useStore((s) => s.orders)
 
-  function save(e: React.FormEvent) {
-    e.preventDefault()
-    store.updateSettings(f)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  if (orders.length === 0) {
+    return (
+      <div className="glass rounded-2xl p-12 text-center">
+        <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <p style={{ color: 'var(--muted-foreground)' }}>No orders yet</p>
+      </div>
+    )
   }
 
-  const inp = (k: keyof typeof f, label: string, type = 'number') => (
-    <div>
-      <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</label>
-      <input type={type} value={String(f[k])} onChange={(e) => setF({ ...f, [k]: type === 'number' ? parseFloat(e.target.value) : e.target.value })}
-        className="mt-1 w-full px-3 py-2.5 rounded-xl text-sm text-white"
-        style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+  return (
+    <div className="space-y-2">
+      {orders.map((o) => (
+        <div key={o.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <div className="font-semibold text-white">{o.plan_name}</div>
+            <div className="text-xs font-mono" style={{ color: 'var(--muted-foreground)' }}>#{o.id}</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Invested</div>
+              <div className="font-mono font-semibold text-white">{formatKsh(o.amount_invested)}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Return</div>
+              <div className="font-mono font-semibold text-green-400">{formatKsh(o.expected_return)}</div>
+            </div>
+            <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase`}
+              style={{
+                background: o.status === 'active' ? 'rgba(247,147,26,0.15)' : 'rgba(74,222,128,0.15)',
+                color: o.status === 'active' ? 'var(--primary)' : '#4ade80',
+              }}>
+              {o.status}
+            </span>
+            {o.status === 'active' && (
+              <button onClick={() => store.adminForceMaturity(o.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                Force Mature
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
+}
+
+// ─── WITHDRAWALS ──────────────────────────────────────────
+function WithdrawalsTab() {
+  const withdrawals = useStore((s) => s.withdrawals)
+  const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'rejected'>('pending')
+  const filtered = filter === 'all' ? withdrawals : withdrawals.filter((w) => w.status === filter)
 
   return (
-    <form onSubmit={save} className="space-y-5">
-      <h2 className="text-xl font-bold text-white">Platform Settings</h2>
-      <div className="glass rounded-2xl p-5 space-y-4">
-        <h3 className="font-semibold text-white">Purchase Limits</h3>
-        <div className="grid sm:grid-cols-2 gap-3">
-          {inp('min_deposit', 'Min Deposit (Ksh)')}
-          {inp('max_deposit', 'Max Deposit (Ksh)')}
-          {inp('min_withdrawal', 'Min Withdrawal (Ksh)')}
-          {inp('referral_bonus_percent', 'Referral Bonus %')}
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-2 flex gap-1">
+        {(['pending', 'paid', 'rejected', 'all'] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)}
+            className="flex-1 py-2 rounded-lg text-xs font-bold uppercase"
+            style={{
+              background: filter === f ? 'var(--gradient-gold)' : 'transparent',
+              color: filter === f ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+            }}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Wallet className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p style={{ color: 'var(--muted-foreground)' }}>No {filter} withdrawals</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((w) => (
+            <div key={w.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="font-bold text-white font-mono">{formatKsh(w.amount)}</div>
+                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>To {w.phone}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase`}
+                  style={{
+                    background: w.status === 'pending' ? 'rgba(251,191,36,0.15)' :
+                      w.status === 'paid' ? 'rgba(74,222,128,0.15)' :
+                        'rgba(239,68,68,0.15)',
+                    color: w.status === 'pending' ? '#fbbf24' :
+                      w.status === 'paid' ? '#4ade80' : '#ef4444',
+                  }}>
+                  {w.status}
+                </span>
+                {w.status === 'pending' && (
+                  <>
+                    <button onClick={() => store.adminApproveWithdrawal(w.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                      style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
+                      <Check className="w-3 h-3" /> Approve
+                    </button>
+                    <button onClick={() => store.adminRejectWithdrawal(w.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                      style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+                      <X className="w-3 h-3" /> Reject
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── ANALYTICS ────────────────────────────────────────────
+function AnalyticsTab() {
+  const users = useStore((s) => s.admin_users)
+  const plans = useStore((s) => s.plans)
+
+  const userGrowth = [
+    { day: 'Mon', users: 12 }, { day: 'Tue', users: 19 }, { day: 'Wed', users: 24 },
+    { day: 'Thu', users: 35 }, { day: 'Fri', users: 42 }, { day: 'Sat', users: 55 }, { day: 'Sun', users: 68 },
+  ]
+
+  const revenueData = [
+    { month: 'Jan', revenue: 120000 }, { month: 'Feb', revenue: 180000 }, { month: 'Mar', revenue: 240000 },
+    { month: 'Apr', revenue: 380000 }, { month: 'May', revenue: 520000 },
+  ]
+
+  const planDistribution = plans.map((p) => ({ name: p.name, value: Math.floor(Math.random() * 100) + 20 }))
+  const COLORS = ['#f5a623', '#7c3aed', '#fbbf24', '#4ade80']
+
+  const topInvestors = [...users].sort((a, b) => b.total_deposited - a.total_deposited).slice(0, 5)
+
+  return (
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="glass rounded-2xl p-5">
+          <h3 className="font-bold text-white mb-4">User Growth (7d)</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={userGrowth}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="day" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+              <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+              <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
+              <Line type="monotone" dataKey="users" stroke="#f5a623" strokeWidth={3} dot={{ fill: '#f5a623' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="glass rounded-2xl p-5">
+          <h3 className="font-bold text-white mb-4">Revenue Trend</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={revenueData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="month" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+              <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+              <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
+              <Bar dataKey="revenue" fill="#f5a623" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
-      <div className="glass rounded-2xl p-5 space-y-4">
-        <h3 className="font-semibold text-white">Sale Window</h3>
-        <div className="flex items-center gap-3">
-          <div className="relative inline-block w-12 h-6">
-            <input type="checkbox" checked={f.sale_open} onChange={(e) => setF({ ...f, sale_open: e.target.checked })}
-              className="sr-only peer" id="sale-toggle" />
-            <label htmlFor="sale-toggle"
-              className="block w-full h-full rounded-full cursor-pointer transition-colors"
-              style={{ background: f.sale_open ? 'var(--primary)' : 'rgba(255,255,255,0.1)' }}>
-              <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
-                style={{ transform: f.sale_open ? 'translateX(24px)' : 'translateX(0)' }} />
-            </label>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="glass rounded-2xl p-5">
+          <h3 className="font-bold text-white mb-4">Plan Popularity</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={planDistribution} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value">
+                {planDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="mt-3 space-y-1.5 text-xs">
+            {planDistribution.map((p, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-white">
+                  <span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                  {p.name}
+                </span>
+                <span className="font-mono" style={{ color: 'var(--muted-foreground)' }}>{p.value}%</span>
+              </div>
+            ))}
           </div>
-          <span className="text-sm text-white">
-            Sale window is <strong>{f.sale_open ? 'OPEN' : 'CLOSED'}</strong>
-          </span>
+        </div>
+
+        <div className="glass rounded-2xl p-5">
+          <h3 className="font-bold text-white mb-4">Top Investors</h3>
+          <div className="space-y-2">
+            {topInvestors.map((u, i) => (
+              <div key={u.id} className="flex items-center gap-3 p-2 rounded-lg" style={{ background: 'rgba(0,0,0,0.2)' }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs"
+                  style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">{u.full_name}</div>
+                  <div className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{u.email}</div>
+                </div>
+                <div className="font-mono font-bold text-white text-sm">{formatKsh(u.total_deposited)}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <button type="submit"
-        className="px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
-        style={{ background: saved ? 'rgba(74,222,128,0.2)' : 'var(--gradient-gold)', color: saved ? '#4ade80' : 'var(--primary-foreground)' }}>
-        <Check className="w-4 h-4" /> {saved ? 'Settings Saved!' : 'Save Settings'}
-      </button>
-    </form>
+    </div>
+  )
+}
+
+// ─── ANNOUNCEMENTS ────────────────────────────────────────
+function AnnouncementsTab() {
+  const announcements = useStore((s) => s.announcements)
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState<{ title: string; message: string; type: Announcement['type']; is_active: boolean }>({
+    title: '', message: '', type: 'info', is_active: true,
+  })
+
+  function submit() {
+    if (!form.title || !form.message) return
+    store.adminAddAnnouncement(form)
+    setForm({ title: '', message: '', type: 'info', is_active: true })
+    setCreating(false)
+  }
+
+  const typeColors = {
+    info: { bg: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'rgba(56,189,248,0.3)' },
+    success: { bg: 'rgba(74,222,128,0.15)', color: '#4ade80', border: 'rgba(74,222,128,0.3)' },
+    warning: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: 'rgba(251,191,36,0.3)' },
+    critical: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-bold text-white">Active Announcements</h3>
+        <button onClick={() => setCreating(!creating)}
+          className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
+          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+          <Plus className="w-4 h-4" /> {creating ? 'Cancel' : 'New Post'}
+        </button>
+      </div>
+
+      {creating && (
+        <div className="glass rounded-2xl p-5 space-y-3 animate-slide-up">
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Title</label>
+            <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="e.g. Holiday Promotion"
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Message</label>
+            <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
+              rows={3} placeholder="Your announcement message..."
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white resize-none"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Type</label>
+            <div className="flex gap-2 mt-1">
+              {(['info', 'success', 'warning', 'critical'] as const).map((t) => (
+                <button key={t} onClick={() => setForm({ ...form, type: t })}
+                  className="flex-1 py-2 rounded-lg text-xs font-bold capitalize"
+                  style={{
+                    background: form.type === t ? typeColors[t].bg : 'rgba(0,0,0,0.2)',
+                    color: form.type === t ? typeColors[t].color : 'var(--muted-foreground)',
+                    border: '1px solid ' + (form.type === t ? typeColors[t].border : 'rgba(255,255,255,0.05)'),
+                  }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={submit}
+            className="w-full py-3 rounded-xl font-bold glow-gold"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            Publish Announcement
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {announcements.length === 0 ? (
+          <div className="glass rounded-2xl p-12 text-center">
+            <Megaphone className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p style={{ color: 'var(--muted-foreground)' }}>No announcements yet</p>
+          </div>
+        ) : announcements.map((a) => {
+          const c = typeColors[a.type]
+          return (
+            <div key={a.id} className="glass rounded-2xl p-4" style={{ borderLeft: `4px solid ${c.color}` }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase"
+                      style={{ background: c.bg, color: c.color }}>{a.type}</span>
+                    <div className="text-sm font-bold text-white">{a.title}</div>
+                  </div>
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--muted-foreground)' }}>{a.message}</p>
+                  <div className="text-[10px] mt-2" style={{ color: 'var(--muted-foreground)' }}>
+                    {new Date(a.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => store.adminToggleAnnouncement(a.id)}
+                    className="px-2 py-1 rounded-lg text-[10px] font-bold"
+                    style={{ background: a.is_active ? 'rgba(74,222,128,0.15)' : 'rgba(136,146,164,0.15)', color: a.is_active ? '#4ade80' : 'var(--muted-foreground)' }}>
+                    {a.is_active ? 'LIVE' : 'OFF'}
+                  </button>
+                  <button onClick={() => store.adminDeleteAnnouncement(a.id)}
+                    className="p-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── SYSTEM SETTINGS ──────────────────────────────────────
+function SettingsTab() {
+  const settings = useStore((s) => s.settings)
+
+  const toggles: { key: keyof typeof settings; label: string; description: string }[] = [
+    { key: 'deposits_enabled', label: 'Deposits Enabled', description: 'Allow users to deposit funds' },
+    { key: 'withdrawals_enabled', label: 'Withdrawals Enabled', description: 'Allow users to request withdrawals' },
+    { key: 'registrations_enabled', label: 'Registrations Open', description: 'Allow new user signups' },
+    { key: 'sale_open', label: 'Share Sale Window', description: 'Allow share purchases' },
+    { key: 'maintenance_mode', label: 'Maintenance Mode', description: 'Show maintenance banner platform-wide' },
+  ]
+
+  const numbers: { key: keyof typeof settings; label: string; suffix?: string }[] = [
+    { key: 'min_deposit', label: 'Minimum Deposit', suffix: 'Ksh' },
+    { key: 'max_deposit', label: 'Maximum Deposit', suffix: 'Ksh' },
+    { key: 'min_withdrawal', label: 'Minimum Withdrawal', suffix: 'Ksh' },
+    { key: 'referral_bonus_percent', label: 'Referral Bonus', suffix: '%' },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-5">
+        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+          <SettingsIcon className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+          Platform Toggles
+        </h3>
+        <div className="space-y-2">
+          {toggles.map((t) => (
+            <div key={t.key} className="flex items-center justify-between p-3 rounded-xl"
+              style={{ background: 'rgba(0,0,0,0.2)' }}>
+              <div>
+                <div className="text-sm font-semibold text-white">{t.label}</div>
+                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t.description}</div>
+              </div>
+              <button onClick={() => store.updateSettings({ [t.key]: !settings[t.key] })}
+                className="relative w-12 h-6 rounded-full transition-all"
+                style={{ background: settings[t.key] ? 'var(--primary)' : 'rgba(255,255,255,0.1)' }}>
+                <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                  style={{ left: settings[t.key] ? '26px' : '4px' }} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-5">
+        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+          Financial Limits
+        </h3>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {numbers.map((n) => (
+            <div key={n.key}>
+              <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+                {n.label} {n.suffix && `(${n.suffix})`}
+              </label>
+              <input type="number" value={settings[n.key] as number}
+                onChange={(e) => store.updateSettings({ [n.key]: parseFloat(e.target.value) || 0 })}
+                className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ACTIVITY LOGS ────────────────────────────────────────
+function LogsTab() {
+  const logs = useStore((s) => s.activity_logs)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-bold text-white">Recent Activity ({logs.length})</h3>
+        <button onClick={() => { if (confirm('Clear all logs?')) store.adminClearActivityLogs() }}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+          <Trash2 className="w-3 h-3" /> Clear Logs
+        </button>
+      </div>
+
+      {logs.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center">
+          <ScrollText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p style={{ color: 'var(--muted-foreground)' }}>No activity logged yet</p>
+        </div>
+      ) : (
+        <div className="glass rounded-2xl p-2 max-h-[600px] overflow-y-auto">
+          {logs.map((l) => (
+            <div key={l.id} className="p-3 rounded-lg hover:bg-white/5 flex items-start gap-3"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center"
+                style={{ background: 'rgba(247,147,26,0.15)', color: 'var(--primary)' }}>
+                <Activity className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-sm font-semibold text-white">{l.action}</div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono"
+                    style={{ background: 'rgba(0,0,0,0.3)', color: 'var(--muted-foreground)' }}>
+                    {l.target}
+                  </span>
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{l.details}</div>
+                <div className="text-[10px] mt-1 font-mono" style={{ color: 'rgba(136,146,164,0.6)' }}>
+                  {l.admin_email} · {new Date(l.created_at).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

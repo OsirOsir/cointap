@@ -73,6 +73,39 @@ export interface User {
   role: 'user' | 'admin'
 }
 
+export interface AdminUser {
+  id: string
+  full_name: string
+  email: string
+  phone: string
+  role: 'user' | 'admin'
+  status: 'active' | 'suspended'
+  wallet_balance: number
+  total_deposited: number
+  total_earned: number
+  total_orders: number
+  joined_at: number
+  last_login_at: number
+}
+
+export interface Announcement {
+  id: string
+  title: string
+  message: string
+  type: 'info' | 'success' | 'warning' | 'critical'
+  is_active: boolean
+  created_at: number
+}
+
+export interface ActivityLog {
+  id: string
+  action: string
+  target: string
+  details: string
+  admin_email: string
+  created_at: number
+}
+
 interface State {
   user: User | null
   wallet: { balance: number; total_deposited: number; total_withdrawn: number; total_earned: number }
@@ -84,7 +117,20 @@ interface State {
   pool: { public_pool_balance: number; reserve_pool_balance: number; sold_out_floor: number; batch_size: number }
   referral_earnings: number
   referrals_count: number
-  settings: { min_deposit: number; max_deposit: number; min_withdrawal: number; referral_bonus_percent: number; sale_open: boolean }
+  settings: {
+    min_deposit: number
+    max_deposit: number
+    min_withdrawal: number
+    referral_bonus_percent: number
+    sale_open: boolean
+    deposits_enabled: boolean
+    withdrawals_enabled: boolean
+    registrations_enabled: boolean
+    maintenance_mode: boolean
+  }
+  admin_users: AdminUser[]
+  announcements: Announcement[]
+  activity_logs: ActivityLog[]
 }
 
 const KEY = 'cointap-state-v2'
@@ -106,7 +152,35 @@ const initial: State = {
   pool: { public_pool_balance: 2_450_000, reserve_pool_balance: 8_000_000, sold_out_floor: 50_000, batch_size: 500_000 },
   referral_earnings: 0,
   referrals_count: 0,
-  settings: { min_deposit: 10, max_deposit: 500000, min_withdrawal: 200, referral_bonus_percent: 3, sale_open: true },
+  settings: {
+    min_deposit: 10,
+    max_deposit: 500000,
+    min_withdrawal: 200,
+    referral_bonus_percent: 3,
+    sale_open: true,
+    deposits_enabled: true,
+    withdrawals_enabled: true,
+    registrations_enabled: true,
+    maintenance_mode: false,
+  },
+  admin_users: [
+    { id: 'u1', full_name: 'Mary Wanjiku', email: 'mary@example.com', phone: '+254712345678', role: 'user', status: 'active', wallet_balance: 45000, total_deposited: 30000, total_earned: 15000, total_orders: 3, joined_at: Date.now() - 86400000 * 30, last_login_at: Date.now() - 3600000 },
+    { id: 'u2', full_name: 'John Kamau', email: 'john@example.com', phone: '+254723456789', role: 'user', status: 'active', wallet_balance: 128000, total_deposited: 100000, total_earned: 28000, total_orders: 8, joined_at: Date.now() - 86400000 * 60, last_login_at: Date.now() - 7200000 },
+    { id: 'u3', full_name: 'Grace Achieng', email: 'grace@example.com', phone: '+254734567890', role: 'user', status: 'active', wallet_balance: 8500, total_deposited: 5000, total_earned: 3500, total_orders: 2, joined_at: Date.now() - 86400000 * 7, last_login_at: Date.now() - 1800000 },
+    { id: 'u4', full_name: 'Peter Otieno', email: 'peter@example.com', phone: '+254745678901', role: 'user', status: 'suspended', wallet_balance: 0, total_deposited: 12000, total_earned: 0, total_orders: 1, joined_at: Date.now() - 86400000 * 90, last_login_at: Date.now() - 86400000 * 5 },
+    { id: 'u5', full_name: 'Faith Njeri', email: 'faith@example.com', phone: '+254756789012', role: 'user', status: 'active', wallet_balance: 250000, total_deposited: 200000, total_earned: 50000, total_orders: 12, joined_at: Date.now() - 86400000 * 120, last_login_at: Date.now() - 600000 },
+    { id: 'u6', full_name: 'David Mwangi', email: 'david@example.com', phone: '+254767890123', role: 'user', status: 'active', wallet_balance: 18000, total_deposited: 15000, total_earned: 3000, total_orders: 2, joined_at: Date.now() - 86400000 * 15, last_login_at: Date.now() - 14400000 },
+    { id: 'u7', full_name: 'Sarah Akinyi', email: 'sarah@example.com', phone: '+254778901234', role: 'user', status: 'active', wallet_balance: 75000, total_deposited: 60000, total_earned: 15000, total_orders: 5, joined_at: Date.now() - 86400000 * 45, last_login_at: Date.now() - 86400000 },
+    { id: 'u8', full_name: 'James Kiprono', email: 'james@example.com', phone: '+254789012345', role: 'user', status: 'active', wallet_balance: 12000, total_deposited: 10000, total_earned: 2000, total_orders: 1, joined_at: Date.now() - 86400000 * 3, last_login_at: Date.now() - 86400000 * 2 },
+  ],
+  announcements: [
+    { id: 'a1', title: 'Welcome to CoinTap', message: 'Start your investment journey with us today. Earn up to 95% returns!', type: 'info', is_active: true, created_at: Date.now() - 86400000 * 2 },
+  ],
+  activity_logs: [
+    { id: 'l1', action: 'Plan Updated', target: 'Growth Plan', details: 'Profit changed from 60% to 65%', admin_email: 'admin@cointap.trade', created_at: Date.now() - 3600000 * 5 },
+    { id: 'l2', action: 'User Suspended', target: 'peter@example.com', details: 'Suspicious activity', admin_email: 'admin@cointap.trade', created_at: Date.now() - 86400000 },
+    { id: 'l3', action: 'Pool Released', target: 'Public Pool', details: 'Released Ksh 500,000 from reserve', admin_email: 'admin@cointap.trade', created_at: Date.now() - 7200000 },
+  ],
 }
 
 function load(): State {
@@ -159,6 +233,20 @@ export const store = {
   },
 
   logout() { set((s) => ({ ...s, user: null })) },
+
+  updateProfile(updates: Partial<Pick<User, 'full_name' | 'email' | 'phone'>>) {
+    set((s) => s.user ? { ...s, user: { ...s.user, ...updates } } : s)
+    logActivity('Profile Updated', state.user?.email || 'unknown', Object.keys(updates).join(', '))
+  },
+
+  changePassword(_currentPassword: string, _newPassword: string): { ok: boolean; error?: string } {
+    // In demo, any current password works. In production, validate against backend.
+    if (!_newPassword || _newPassword.length < 6) {
+      return { ok: false, error: 'New password must be at least 6 characters' }
+    }
+    logActivity('Password Changed', state.user?.email || 'unknown', 'User updated their password')
+    return { ok: true }
+  },
 
   deposit(amount: number) {
     set((s) => {
@@ -354,11 +442,114 @@ export const store = {
         o.id === orderId ? { ...o, matures_at: Date.now() - 1000 } : o
       ),
     }))
+    logActivity('Order Force-Matured', `Order ${orderId}`, 'Forced settlement')
   },
 
   updateSettings(updates: Partial<State['settings']>) {
     set((s) => ({ ...s, settings: { ...s.settings, ...updates } }))
+    logActivity('Settings Updated', 'System Settings', JSON.stringify(updates))
   },
+
+  // ── USER MANAGEMENT ────────────────────────────────────
+  adminCreditUserWallet(userId: string, amount: number, reason: string) {
+    set((s) => ({
+      ...s,
+      admin_users: s.admin_users.map((u) =>
+        u.id === userId
+          ? { ...u, wallet_balance: u.wallet_balance + amount, total_deposited: amount > 0 ? u.total_deposited + amount : u.total_deposited }
+          : u
+      ),
+    }))
+    const user = state.admin_users.find((u) => u.id === userId)
+    logActivity(amount >= 0 ? 'User Wallet Credited' : 'User Wallet Debited', user?.email || userId, `${amount >= 0 ? '+' : ''}${amount} — ${reason}`)
+  },
+
+  adminToggleUserStatus(userId: string) {
+    set((s) => ({
+      ...s,
+      admin_users: s.admin_users.map((u) =>
+        u.id === userId ? { ...u, status: u.status === 'active' ? 'suspended' : 'active' } : u
+      ),
+    }))
+    const user = state.admin_users.find((u) => u.id === userId)
+    logActivity(user?.status === 'active' ? 'User Suspended' : 'User Activated', user?.email || userId, 'Status changed by admin')
+  },
+
+  adminPromoteUser(userId: string) {
+    set((s) => ({
+      ...s,
+      admin_users: s.admin_users.map((u) =>
+        u.id === userId ? { ...u, role: u.role === 'admin' ? 'user' : 'admin' } : u
+      ),
+    }))
+    const user = state.admin_users.find((u) => u.id === userId)
+    logActivity('User Role Changed', user?.email || userId, `Role: ${user?.role === 'admin' ? 'user' : 'admin'}`)
+  },
+
+  adminDeleteUser(userId: string) {
+    const user = state.admin_users.find((u) => u.id === userId)
+    set((s) => ({ ...s, admin_users: s.admin_users.filter((u) => u.id !== userId) }))
+    logActivity('User Deleted', user?.email || userId, 'Account permanently removed')
+  },
+
+  // ── PLAN MANAGEMENT ────────────────────────────────────
+  adminDeletePlan(id: string) {
+    const plan = state.plans.find((p) => p.id === id)
+    set((s) => ({ ...s, plans: s.plans.filter((p) => p.id !== id) }))
+    logActivity('Plan Deleted', plan?.name || id, 'Plan removed')
+  },
+
+  // ── POOL MANAGEMENT ────────────────────────────────────
+  adminInjectFunds(amount: number, target: 'public' | 'reserve') {
+    set((s) => ({
+      ...s,
+      pool: {
+        ...s.pool,
+        [target === 'public' ? 'public_pool_balance' : 'reserve_pool_balance']:
+          s.pool[target === 'public' ? 'public_pool_balance' : 'reserve_pool_balance'] + amount,
+      },
+    }))
+    logActivity('Pool Injected', `${target} pool`, `Added Ksh ${amount.toLocaleString()}`)
+  },
+
+  // ── ANNOUNCEMENTS ──────────────────────────────────────
+  adminAddAnnouncement(input: Omit<Announcement, 'id' | 'created_at'>) {
+    set((s) => ({
+      ...s,
+      announcements: [{ ...input, id: uid(), created_at: Date.now() }, ...s.announcements],
+    }))
+    logActivity('Announcement Posted', input.title, input.message.slice(0, 60))
+  },
+
+  adminToggleAnnouncement(id: string) {
+    set((s) => ({
+      ...s,
+      announcements: s.announcements.map((a) =>
+        a.id === id ? { ...a, is_active: !a.is_active } : a
+      ),
+    }))
+  },
+
+  adminDeleteAnnouncement(id: string) {
+    set((s) => ({ ...s, announcements: s.announcements.filter((a) => a.id !== id) }))
+  },
+
+  adminClearActivityLogs() {
+    set((s) => ({ ...s, activity_logs: [] }))
+  },
+}
+
+// Helper: log admin activity
+function logActivity(action: string, target: string, details: string) {
+  const log: ActivityLog = {
+    id: uid(),
+    action,
+    target,
+    details,
+    admin_email: state.user?.email || 'admin@cointap.trade',
+    created_at: Date.now(),
+  }
+  set((s) => ({ ...s, activity_logs: [log, ...s.activity_logs].slice(0, 200) }))
 }
 
 export function useStore<T>(selector: (s: State) => T): T {
