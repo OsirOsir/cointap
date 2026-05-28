@@ -1,6 +1,8 @@
-// Centralized mock store for CoinTap.
-// Mirrors REST endpoints so it can be swapped with Flask/PostgreSQL backend.
+// Centralized store for CoinTap.
+// Real auth/wallet flows call the Flask backend via `api.ts`.
+// Mock methods remain for pages not yet migrated.
 import { useSyncExternalStore } from 'react'
+import { authApi, walletApi } from './api'
 
 export type TxType =
   | 'deposit'
@@ -190,30 +192,11 @@ const initial: State = {
     registrations_enabled: true,
     maintenance_mode: false,
   },
-  admin_users: [
-    { id: 'u1', full_name: 'Mary Wanjiku', email: 'mary@example.com', phone: '+254712345678', role: 'user', status: 'active', wallet_balance: 45000, total_deposited: 30000, total_earned: 15000, total_orders: 3, joined_at: Date.now() - 86400000 * 30, last_login_at: Date.now() - 3600000 },
-    { id: 'u2', full_name: 'John Kamau', email: 'john@example.com', phone: '+254723456789', role: 'user', status: 'active', wallet_balance: 128000, total_deposited: 100000, total_earned: 28000, total_orders: 8, joined_at: Date.now() - 86400000 * 60, last_login_at: Date.now() - 7200000 },
-    { id: 'u3', full_name: 'Grace Achieng', email: 'grace@example.com', phone: '+254734567890', role: 'user', status: 'active', wallet_balance: 8500, total_deposited: 5000, total_earned: 3500, total_orders: 2, joined_at: Date.now() - 86400000 * 7, last_login_at: Date.now() - 1800000 },
-    { id: 'u4', full_name: 'Peter Otieno', email: 'peter@example.com', phone: '+254745678901', role: 'user', status: 'suspended', wallet_balance: 0, total_deposited: 12000, total_earned: 0, total_orders: 1, joined_at: Date.now() - 86400000 * 90, last_login_at: Date.now() - 86400000 * 5 },
-    { id: 'u5', full_name: 'Faith Njeri', email: 'faith@example.com', phone: '+254756789012', role: 'user', status: 'active', wallet_balance: 250000, total_deposited: 200000, total_earned: 50000, total_orders: 12, joined_at: Date.now() - 86400000 * 120, last_login_at: Date.now() - 600000 },
-    { id: 'u6', full_name: 'David Mwangi', email: 'david@example.com', phone: '+254767890123', role: 'user', status: 'active', wallet_balance: 18000, total_deposited: 15000, total_earned: 3000, total_orders: 2, joined_at: Date.now() - 86400000 * 15, last_login_at: Date.now() - 14400000 },
-    { id: 'u7', full_name: 'Sarah Akinyi', email: 'sarah@example.com', phone: '+254778901234', role: 'user', status: 'active', wallet_balance: 75000, total_deposited: 60000, total_earned: 15000, total_orders: 5, joined_at: Date.now() - 86400000 * 45, last_login_at: Date.now() - 86400000 },
-    { id: 'u8', full_name: 'James Kiprono', email: 'james@example.com', phone: '+254789012345', role: 'user', status: 'active', wallet_balance: 12000, total_deposited: 10000, total_earned: 2000, total_orders: 1, joined_at: Date.now() - 86400000 * 3, last_login_at: Date.now() - 86400000 * 2 },
-  ],
-  announcements: [
-    { id: 'a1', title: 'Welcome to CoinTap', message: 'Start your investment journey with us today. Earn up to 95% returns!', type: 'info', is_active: true, created_at: Date.now() - 86400000 * 2 },
-  ],
-  activity_logs: [
-    { id: 'l1', action: 'Plan Updated', target: 'Growth Plan', details: 'Profit changed from 60% to 65%', admin_email: 'admin@cointap.trade', created_at: Date.now() - 3600000 * 5 },
-    { id: 'l2', action: 'User Suspended', target: 'peter@example.com', details: 'Suspicious activity', admin_email: 'admin@cointap.trade', created_at: Date.now() - 86400000 },
-    { id: 'l3', action: 'Pool Released', target: 'Public Pool', details: 'Released Ksh 500,000 from reserve', admin_email: 'admin@cointap.trade', created_at: Date.now() - 7200000 },
-  ],
+  admin_users: [],
+  announcements: [],
+  activity_logs: [],
   login_attempts: [],
-  security_events: [
-    { id: 'se1', type: 'suspicious_withdrawal', email: 'peter@example.com', details: 'Withdrawal Ksh 50,000 from new device', severity: 'warning', timestamp: Date.now() - 3600000 * 8 },
-    { id: 'se2', type: 'login_locked', email: 'unknown@test.com', details: 'Account locked after 5 failed login attempts', severity: 'critical', timestamp: Date.now() - 3600000 * 2 },
-    { id: 'se3', type: 'rapid_withdrawals', email: 'james@example.com', details: '3 withdrawals in 10 minutes — flagged for review', severity: 'warning', timestamp: Date.now() - 3600000 * 4 },
-  ],
+  security_events: [],
 }
 
 function load(): State {
@@ -240,6 +223,115 @@ const uid = () => Math.random().toString(36).slice(2, 10).toUpperCase()
 export const store = {
   subscribe(l: () => void) { listeners.add(l); return () => listeners.delete(l) },
   get: () => state,
+
+  // ═══════════════════════════════════════════════════════════
+  // REAL API AUTH (connects to Flask backend)
+  // ═══════════════════════════════════════════════════════════
+
+  /** Register a real user via the backend. */
+  async apiRegister(input: { full_name: string; email: string; phone: string; password: string; promo_code?: string }): Promise<{ ok: boolean; error?: string; user?: User }> {
+    try {
+      const apiUser = await authApi.register(input)
+      const user: User = {
+        full_name: apiUser.full_name,
+        email: apiUser.email,
+        phone: apiUser.phone,
+        referral_code: apiUser.referral_code,
+        role: apiUser.role,
+        email_verified: true,
+        two_factor_enabled: false,
+      }
+      set((s) => ({ ...s, user }))
+      await store.apiLoadWallet()
+      return { ok: true, user }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Registration failed' }
+    }
+  },
+
+  /** Login a real user via the backend. */
+  async apiLogin(email: string, password: string): Promise<{ ok: boolean; error?: string; user?: User }> {
+    try {
+      const apiUser = await authApi.login(email, password)
+      const user: User = {
+        full_name: apiUser.full_name,
+        email: apiUser.email,
+        phone: apiUser.phone,
+        referral_code: apiUser.referral_code,
+        role: apiUser.role,
+        email_verified: true,
+        two_factor_enabled: false,
+      }
+      set((s) => ({ ...s, user }))
+      await store.apiLoadWallet()
+      return { ok: true, user }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Invalid email or password' }
+    }
+  },
+
+  /** Restore session on app load (if a valid token exists). */
+  async apiRestoreSession(): Promise<boolean> {
+    if (!authApi.isAuthenticated()) return false
+    try {
+      const apiUser = await authApi.me()
+      const user: User = {
+        full_name: apiUser.full_name,
+        email: apiUser.email,
+        phone: apiUser.phone,
+        referral_code: apiUser.referral_code,
+        role: apiUser.role,
+        email_verified: true,
+        two_factor_enabled: false,
+      }
+      set((s) => ({ ...s, user }))
+      await store.apiLoadWallet()
+      return true
+    } catch {
+      authApi.logout()
+      return false
+    }
+  },
+
+  /** Fetch the current user's wallet from the backend. */
+  async apiLoadWallet() {
+    try {
+      const w = await walletApi.get()
+      set((s) => ({
+        ...s,
+        wallet: {
+          balance: Number(w.balance),
+          total_deposited: Number(w.total_deposited),
+          total_withdrawn: Number(w.total_withdrawn),
+          total_earned: Number(w.total_earned),
+        },
+      }))
+    } catch { /* wallet load failed silently */ }
+  },
+
+  /** Update profile via the backend. */
+  async apiUpdateProfile(input: { full_name?: string; phone?: string; password?: string }): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const apiUser = await authApi.updateProfile(input)
+      set((s) => s.user ? {
+        ...s,
+        user: { ...s.user, full_name: apiUser.full_name, phone: apiUser.phone },
+      } : s)
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Update failed' }
+    }
+  },
+
+  /** Real logout — clears tokens + user. */
+  apiLogout() {
+    authApi.logout()
+    set((s) => ({ ...s, user: null }))
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // DEMO / MOCK methods below (kept for pages not yet migrated)
+  // ═══════════════════════════════════════════════════════════
 
   register(input: { full_name: string; email: string; phone: string; promo_code?: string }) {
     const code = 'CT' + Math.random().toString(36).slice(2, 7).toUpperCase()

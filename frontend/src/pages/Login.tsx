@@ -41,26 +41,21 @@ export function Login() {
     return () => clearInterval(t)
   }, [lockoutUntil])
 
-  function submitCredentials(e: React.FormEvent) {
+  async function submitCredentials(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (!email || !password) { setError('Email and password are required'); return }
     if (!captchaOK) { setError('Please complete the bot check'); return }
 
-    const isAdmin = email.toLowerCase().includes('admin')
-    const res = store.login(email, isAdmin)
+    const res = await store.apiLogin(email, password)
 
     if (!res.ok) {
       setError(res.error || 'Login failed')
       return
     }
 
-    if (res.requires_2fa) {
-      setStep('2fa')
-      return
-    }
-
-    navigate(isAdmin ? '/admin' : '/dashboard')
+    // Route based on real role from backend
+    navigate(res.user?.role === 'admin' ? '/admin' : '/dashboard')
   }
 
   function submit2FA(code: string) {
@@ -134,10 +129,7 @@ export function Login() {
         <>
           <GoogleSignInButton
             label="Continue with Google"
-            onSuccess={() => {
-              const isAdmin = email.toLowerCase().includes('admin')
-              navigate(isAdmin ? '/admin' : '/dashboard')
-            }}
+            onSuccess={() => navigate('/dashboard')}
             onError={(msg) => setError(msg)}
           />
           <OrDivider label="or sign in with email" />
@@ -176,7 +168,7 @@ export function Login() {
       </form>
 
       <div className="mt-4 p-3 rounded-xl text-xs text-center" style={{ background: 'rgba(247,147,26,0.05)', border: '1px solid rgba(247,147,26,0.1)', color: 'var(--muted-foreground)' }}>
-        Demo: any email + password. Use <code style={{ color: 'var(--primary)' }}>admin@cointap.trade</code> for admin · <code style={{ color: 'var(--primary)' }}>blocked@test.com</code> to test lockout
+        Sign in with your registered email and password.
       </div>
     </AuthShell>
   )

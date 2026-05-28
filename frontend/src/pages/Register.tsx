@@ -16,10 +16,11 @@ export function Register() {
   const [error, setError] = useState('')
   const [captchaOK, setCaptchaOK] = useState(false)
   const [agreed, setAgreed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const up = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF({ ...f, [k]: e.target.value })
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
 
@@ -37,7 +38,6 @@ export function Register() {
       setError('Passwords do not match'); return
     }
 
-    // Enforce strong password (score >= 3 = "Strong")
     const { score, label } = getPasswordStrength(f.password)
     if (score < 3) {
       setError(`Password is "${label}". Please use a stronger password.`); return
@@ -46,13 +46,21 @@ export function Register() {
     if (!captchaOK) { setError('Please complete the bot check'); return }
     if (!agreed) { setError('You must accept the Terms & Privacy Policy'); return }
 
-    store.register({
+    setSubmitting(true)
+    const res = await store.apiRegister({
       full_name: f.full_name.trim(),
       email: f.email.toLowerCase().trim(),
       phone: f.phone.trim(),
+      password: f.password,
       promo_code: f.ref.trim(),
     })
-    navigate('/verify-email')
+    setSubmitting(false)
+
+    if (!res.ok) {
+      setError(res.error || 'Registration failed')
+      return
+    }
+    navigate('/dashboard')
   }
 
   return (
@@ -112,10 +120,10 @@ export function Register() {
           </div>
         )}
 
-        <button type="submit"
-          className="w-full mt-2 py-3.5 rounded-xl font-semibold glow-gold hover:opacity-90 transition"
+        <button type="submit" disabled={submitting}
+          className="w-full mt-2 py-3.5 rounded-xl font-semibold glow-gold hover:opacity-90 transition disabled:opacity-60"
           style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-          Create Secure Wallet
+          {submitting ? 'Creating account…' : 'Create Secure Wallet'}
         </button>
       </form>
     </AuthShell>

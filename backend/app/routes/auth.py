@@ -31,8 +31,8 @@ def register():
     user = result["user"]
     return ok(
         user=user.to_dict(),
-        access_token=create_access_token(identity=user.id),
-        refresh_token=create_refresh_token(identity=user.id),
+        access_token=create_access_token(identity=str(user.id)),
+        refresh_token=create_refresh_token(identity=str(user.id)),
     ), 201
 
 
@@ -49,8 +49,8 @@ def login():
     user = result["user"]
     return ok(
         user=user.to_dict(),
-        access_token=create_access_token(identity=user.id),
-        refresh_token=create_refresh_token(identity=user.id),
+        access_token=create_access_token(identity=str(user.id)),
+        refresh_token=create_refresh_token(identity=str(user.id)),
     )
 
 
@@ -58,7 +58,7 @@ def login():
 @jwt_required(refresh=True)
 def refresh():
     user_id = get_jwt_identity()
-    return ok(access_token=create_access_token(identity=user_id))
+    return ok(access_token=create_access_token(identity=str(user_id)))
 
 
 @auth_bp.get("/me")

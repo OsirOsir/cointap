@@ -10,7 +10,7 @@ def admin_required(fn):
     def wrapper(*args, **kwargs):
         verify_jwt_in_request()
         user_id = get_jwt_identity()
-        user = User.query.get(user_id)
+        user = User.query.get(int(user_id)) if user_id else None
         if not user or user.role != "admin":
             return jsonify({"error": "Admin access required"}), 403
         return fn(*args, **kwargs)
@@ -19,7 +19,7 @@ def admin_required(fn):
 
 def current_user() -> User | None:
     user_id = get_jwt_identity()
-    return User.query.get(user_id) if user_id else None
+    return User.query.get(int(user_id)) if user_id else None
 
 
 def ok(data: dict = None, **kwargs):

@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Navigate, Link } from 'react-router-dom'
 import {
   Shield, Users, Package, Droplets, BarChart3, Megaphone, Settings as SettingsIcon,
   ScrollText, Wallet, FileText, Search, Edit2, Trash2, UserX, UserCheck, Plus,
   Check, X, AlertTriangle, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
-  Activity, DollarSign, Clock, ArrowLeft, Home,
+  Activity, DollarSign, Clock, ArrowLeft, Home, RefreshCw,
 } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
+import { adminApi } from '@/lib/api'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
@@ -108,29 +109,47 @@ export function Admin() {
 
 // ─── OVERVIEW ─────────────────────────────────────────────
 function OverviewTab() {
-  const users = useStore((s) => s.admin_users)
-  const orders = useStore((s) => s.orders)
-  const withdrawals = useStore((s) => s.withdrawals)
-  const pool = useStore((s) => s.pool)
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const totalDeposited = users.reduce((sum, u) => sum + u.total_deposited, 0)
-  const totalEarned = users.reduce((sum, u) => sum + u.total_earned, 0)
-  const activeOrders = orders.filter((o) => o.status === 'active').length
-  const pendingWithdrawals = withdrawals.filter((w) => w.status === 'pending').length
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await adminApi.dashboard()
+      setStats(data.stats)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load dashboard')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const stats = [
-    { label: 'Total Users', value: users.length, icon: Users, color: 'rgba(74,222,128,0.2)' },
-    { label: 'Total Deposits', value: formatKsh(totalDeposited), icon: ArrowDownToLine, color: 'rgba(247,147,26,0.2)' },
-    { label: 'Total Earned', value: formatKsh(totalEarned), icon: TrendingUp, color: 'rgba(124,58,237,0.2)' },
-    { label: 'Active Orders', value: activeOrders, icon: Activity, color: 'rgba(251,191,36,0.2)' },
-    { label: 'Pending Withdrawals', value: pendingWithdrawals, icon: Clock, color: 'rgba(239,68,68,0.2)' },
-    { label: 'Public Pool', value: formatKsh(pool.public_pool_balance), icon: Droplets, color: 'rgba(56,189,248,0.2)' },
+  useEffect(() => { load() }, [])
+
+  if (loading) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={load} />
+
+  const cards = [
+    { label: 'Total Users', value: stats?.total_users ?? 0, icon: Users, color: 'rgba(74,222,128,0.2)' },
+    { label: 'Active Users', value: stats?.active_users ?? 0, icon: UserCheck, color: 'rgba(56,189,248,0.2)' },
+    { label: 'Total Deposits', value: formatKsh(stats?.total_deposited ?? 0), icon: ArrowDownToLine, color: 'rgba(247,147,26,0.2)' },
+    { label: 'Total Withdrawn', value: formatKsh(stats?.total_withdrawn ?? 0), icon: ArrowUpFromLine, color: 'rgba(124,58,237,0.2)' },
+    { label: 'Active Orders', value: stats?.active_orders ?? 0, icon: Activity, color: 'rgba(251,191,36,0.2)' },
+    { label: 'Pending Withdrawals', value: stats?.pending_withdrawals ?? 0, icon: Clock, color: 'rgba(239,68,68,0.2)' },
   ]
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <button onClick={load} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+          <RefreshCw className="w-3 h-3" /> Refresh
+        </button>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {stats.map((s) => (
+        {cards.map((s) => (
           <div key={s.label} className="glass rounded-2xl p-5 group hover:scale-105 transition-transform">
             <div className="flex items-start justify-between">
               <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
@@ -146,11 +165,10 @@ function OverviewTab() {
         ))}
       </div>
 
-      {/* Quick actions */}
       <div className="glass rounded-2xl p-6">
         <h3 className="font-bold text-white mb-4">Quick Actions</h3>
         <div className="grid sm:grid-cols-3 gap-3">
-          <button onClick={() => store.adminReleaseBatch()}
+          <button onClick={async () => { await adminApi.releaseBatch(); load() }}
             className="p-4 rounded-xl text-left hover:scale-105 transition-transform"
             style={{ background: 'rgba(247,147,26,0.1)', border: '1px solid rgba(247,147,26,0.3)' }}>
             <Droplets className="w-5 h-5 mb-2" style={{ color: 'var(--primary)' }} />
@@ -159,41 +177,81 @@ function OverviewTab() {
               Move funds from reserve → public
             </div>
           </button>
-          <button onClick={() => alert('Maintenance toggled (demo)')}
-            className="p-4 rounded-xl text-left hover:scale-105 transition-transform"
+          <div className="p-4 rounded-xl"
             style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)' }}>
             <SettingsIcon className="w-5 h-5 mb-2" style={{ color: '#7c3aed' }} />
-            <div className="text-sm font-semibold text-white">Maintenance Mode</div>
-            <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-              Pause platform temporarily
-            </div>
-          </button>
-          <button onClick={() => alert('Broadcast scheduled (demo)')}
-            className="p-4 rounded-xl text-left hover:scale-105 transition-transform"
+            <div className="text-sm font-semibold text-white">Platform Status</div>
+            <div className="text-xs mt-0.5 text-green-400">● Online</div>
+          </div>
+          <div className="p-4 rounded-xl"
             style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)' }}>
-            <Megaphone className="w-5 h-5 mb-2" style={{ color: '#4ade80' }} />
-            <div className="text-sm font-semibold text-white">Broadcast Message</div>
+            <Activity className="w-5 h-5 mb-2" style={{ color: '#4ade80' }} />
+            <div className="text-sm font-semibold text-white">Settled Orders</div>
             <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-              Notify all users instantly
+              {stats?.settled_orders ?? 0} completed
             </div>
-          </button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
+// Shared loading / error states
+function LoadingState() {
+  return (
+    <div className="glass rounded-2xl p-12 flex flex-col items-center">
+      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+        style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
+      <p className="mt-3 text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</p>
+    </div>
+  )
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="glass rounded-2xl p-12 text-center">
+      <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-400" />
+      <p className="text-sm text-red-400">{message}</p>
+      <button onClick={onRetry} className="mt-4 px-4 py-2 rounded-xl text-sm font-bold"
+        style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+        Retry
+      </button>
+    </div>
+  )
+}
+
 // ─── USERS MANAGEMENT ─────────────────────────────────────
 function UsersTab() {
-  const users = useStore((s) => s.admin_users)
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [editing, setEditing] = useState<AdminUser | null>(null)
+  const [editing, setEditing] = useState<any | null>(null)
 
-  const filtered = users.filter((u) =>
-    u.full_name.toLowerCase().includes(query.toLowerCase()) ||
-    u.email.toLowerCase().includes(query.toLowerCase()) ||
-    u.phone.includes(query)
-  )
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await adminApi.users(1, query)
+      setUsers(data.users || [])
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load users')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  // Debounced search
+  useEffect(() => {
+    const t = setTimeout(() => load(), 400)
+    return () => clearTimeout(t)
+  }, [query])
+
+  if (loading && users.length === 0) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={load} />
 
   return (
     <div className="space-y-4">
@@ -203,95 +261,104 @@ function UsersTab() {
           placeholder="Search by name, email, or phone..."
           className="flex-1 bg-transparent text-white outline-none" />
         <span className="text-xs px-3 py-1 rounded-lg" style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
-          {filtered.length} users
+          {users.length} users
         </span>
+        <button onClick={load} className="p-1.5 rounded-lg" title="Refresh"
+          style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </div>
 
-      <div className="space-y-2">
-        {filtered.map((u) => (
-          <div key={u.id} className="glass rounded-2xl p-4 hover:scale-[1.01] transition-transform">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white"
-                  style={{ background: 'var(--gradient-gold)' }}>
-                  {u.full_name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                </div>
-                <div>
-                  <div className="font-semibold text-white flex items-center gap-2">
-                    {u.full_name}
-                    {u.role === 'admin' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(247,147,26,0.2)', color: 'var(--primary)' }}>
-                        ADMIN
-                      </span>
-                    )}
-                    {u.status === 'suspended' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
-                        SUSPENDED
-                      </span>
-                    )}
+      {users.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p style={{ color: 'var(--muted-foreground)' }}>No users found</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {users.map((u) => {
+            const wallet = u.wallet || {}
+            return (
+              <div key={u.id} className="glass rounded-2xl p-4 hover:scale-[1.01] transition-transform">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white"
+                      style={{ background: 'var(--gradient-gold)' }}>
+                      {u.full_name.split(' ').map((p: string) => p[0]).slice(0, 2).join('')}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white flex items-center gap-2">
+                        {u.full_name}
+                        {u.role === 'admin' && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(247,147,26,0.2)', color: 'var(--primary)' }}>
+                            ADMIN
+                          </span>
+                        )}
+                        {!u.is_active && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                            SUSPENDED
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {u.email} · {u.phone}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                    {u.email} · {u.phone}
+
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="text-right">
+                      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Wallet</div>
+                      <div className="font-mono font-bold text-white">{formatKsh(wallet.balance ?? 0)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Earned</div>
+                      <div className="font-mono font-bold text-green-400">{formatKsh(wallet.total_earned ?? 0)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Orders</div>
+                      <div className="font-mono font-bold text-white">{u.order_count ?? 0}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setEditing(u)}
+                      className="p-2 rounded-lg hover:opacity-80" title="Adjust wallet"
+                      style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               </div>
+            )
+          })}
+        </div>
+      )}
 
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="text-right">
-                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Wallet</div>
-                  <div className="font-mono font-bold text-white">{formatKsh(u.wallet_balance)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Earned</div>
-                  <div className="font-mono font-bold text-green-400">{formatKsh(u.total_earned)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Orders</div>
-                  <div className="font-mono font-bold text-white">{u.total_orders}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => setEditing(u)}
-                  className="p-2 rounded-lg hover:opacity-80" title="Edit wallet"
-                  style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button onClick={() => store.adminToggleUserStatus(u.id)}
-                  className="p-2 rounded-lg hover:opacity-80" title={u.status === 'active' ? 'Suspend' : 'Activate'}
-                  style={{ background: u.status === 'active' ? 'rgba(239,68,68,0.1)' : 'rgba(74,222,128,0.1)', color: u.status === 'active' ? '#ef4444' : '#4ade80' }}>
-                  {u.status === 'active' ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                </button>
-                <button onClick={() => store.adminPromoteUser(u.id)}
-                  className="p-2 rounded-lg hover:opacity-80" title="Toggle admin role"
-                  style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed' }}>
-                  <Shield className="w-4 h-4" />
-                </button>
-                <button onClick={() => { if (confirm(`Delete ${u.full_name}?`)) store.adminDeleteUser(u.id) }}
-                  className="p-2 rounded-lg hover:opacity-80" title="Delete user"
-                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {editing && <WalletAdjustModal user={editing} onClose={() => setEditing(null)} />}
+      {editing && <WalletAdjustModal user={editing} onClose={() => { setEditing(null); load() }} />}
     </div>
   )
 }
 
-function WalletAdjustModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+function WalletAdjustModal({ user, onClose }: { user: any; onClose: () => void }) {
   const [amount, setAmount] = useState('0')
   const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   const a = parseFloat(amount) || 0
+  const currentBalance = user.wallet?.balance ?? 0
 
-  function submit() {
+  async function submit() {
     if (a === 0 || !reason) return
-    store.adminCreditUserWallet(user.id, a, reason)
-    onClose()
+    setBusy(true)
+    setError('')
+    try {
+      await adminApi.adjustWallet(user.id, a, reason)
+      onClose()
+    } catch (e: any) {
+      setError(e?.message || 'Adjustment failed')
+      setBusy(false)
+    }
   }
 
   return (
@@ -310,7 +377,7 @@ function WalletAdjustModal({ user, onClose }: { user: AdminUser; onClose: () => 
 
         <div className="rounded-xl p-3 mb-4" style={{ background: 'rgba(0,0,0,0.3)' }}>
           <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Current Balance</div>
-          <div className="font-mono font-bold text-white text-xl">{formatKsh(user.wallet_balance)}</div>
+          <div className="font-mono font-bold text-white text-xl">{formatKsh(currentBalance)}</div>
         </div>
 
         <div className="space-y-3">
@@ -343,13 +410,20 @@ function WalletAdjustModal({ user, onClose }: { user: AdminUser; onClose: () => 
 
           <div className="rounded-xl p-3 flex items-center justify-between" style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
             <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>New Balance</span>
-            <span className="font-mono font-bold text-green-400">{formatKsh(user.wallet_balance + a)}</span>
+            <span className="font-mono font-bold text-green-400">{formatKsh(currentBalance + a)}</span>
           </div>
 
-          <button onClick={submit} disabled={a === 0 || !reason}
+          {error && (
+            <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <button onClick={submit} disabled={a === 0 || !reason || busy}
             className="w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-50"
             style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-            Apply Adjustment
+            {busy ? 'Applying…' : 'Apply Adjustment'}
           </button>
         </div>
       </div>

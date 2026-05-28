@@ -95,7 +95,7 @@ export function AppLayout() {
             </div>
           </Link>
           <button
-            onClick={() => { store.logout(); navigate('/login') }}
+            onClick={() => { store.apiLogout(); navigate('/login') }}
             className="flex items-center gap-2 text-sm transition-colors hover:text-red-400"
             style={{ color: 'var(--muted-foreground)' }}>
             <LogOut className="w-4 h-4" /> Sign out
@@ -281,7 +281,7 @@ export function AppLayout() {
         {/* Footer with sign out */}
         <div className="p-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <button
-            onClick={() => { setDrawerOpen(false); store.logout(); navigate('/login') }}
+            onClick={() => { setDrawerOpen(false); store.apiLogout(); navigate('/login') }}
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]"
             style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
             <LogOut className="w-5 h-5" />

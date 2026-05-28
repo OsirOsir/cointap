@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { AppLayout } from '@/components/cointap/AppLayout'
 import { Landing } from '@/pages/Landing'
 import { Login } from '@/pages/Login'
@@ -13,8 +14,25 @@ import { Withdraw } from '@/pages/Withdraw'
 import { Admin } from '@/pages/Admin'
 import { Profile } from '@/pages/Profile'
 import { VerifyEmail } from '@/pages/VerifyEmail'
+import { store } from '@/lib/cointap-store'
 
 export default function App() {
+  const [restoring, setRestoring] = useState(true)
+
+  // Restore session from stored JWT on first load
+  useEffect(() => {
+    store.apiRestoreSession().finally(() => setRestoring(false))
+  }, [])
+
+  if (restoring) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }} />
+      </div>
+    )
+  }
+
   return (
     <BrowserRouter>
       <Routes>
