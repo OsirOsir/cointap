@@ -1,0 +1,54 @@
+"""
+PlatformSettings — singleton row storing platform-wide feature toggles.
+
+There's always exactly ONE row (id=1). The application uses get_or_create()
+to ensure it exists.
+"""
+from ..extensions import db
+from datetime import datetime, timezone
+
+
+class PlatformSettings(db.Model):
+    __tablename__ = "platform_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Feature toggles
+    deposits_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    withdrawals_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    registrations_open = db.Column(db.Boolean, default=True, nullable=False)
+    share_sale_open = db.Column(db.Boolean, default=True, nullable=False)
+    maintenance_mode = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Optional message shown alongside maintenance banner
+    maintenance_message = db.Column(
+        db.Text,
+        default="The platform is undergoing scheduled maintenance. Please check back shortly.",
+    )
+
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def to_dict(self):
+        return {
+            "deposits_enabled": bool(self.deposits_enabled),
+            "withdrawals_enabled": bool(self.withdrawals_enabled),
+            "registrations_open": bool(self.registrations_open),
+            "share_sale_open": bool(self.share_sale_open),
+            "maintenance_mode": bool(self.maintenance_mode),
+            "maintenance_message": self.maintenance_message or "",
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+def get_settings() -> PlatformSettings:
+    """Return the single settings row, creating it on first call."""
+    settings = PlatformSettings.query.first()
+    if not settings:
+        settings = PlatformSettings()
+        db.session.add(settings)
+        db.session.commit()
+    return settings

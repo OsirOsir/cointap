@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { AppLayout } from '@/components/cointap/AppLayout'
+import { MaintenanceBanner } from '@/components/cointap/MaintenanceBanner'
 import { Landing } from '@/pages/Landing'
 import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
@@ -35,6 +36,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <MaintenanceBanner />
       <Routes>
         {/* Public */}
         <Route path="/" element={<Landing />} />

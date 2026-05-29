@@ -6,3 +6,4 @@ from .withdrawal import Withdrawal
 from .referral import Referral
 from .pool import PoolSettings
 from .mpesa_log import MpesaLog
+from .settings import PlatformSettings, get_settings

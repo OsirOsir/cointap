@@ -22,11 +22,11 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.plans import plans_bp
     from .routes.withdrawals import withdrawals_bp
     from .routes.referrals import referrals_bp
-    from .routes.pool import pool_bp
+    from .routes.pool import pool_bp, public_settings_bp
     from .routes.mpesa import mpesa_bp
     from .routes.admin import admin_bp
 
-    for bp in [auth_bp, wallet_bp, orders_bp, plans_bp, withdrawals_bp, referrals_bp, pool_bp, mpesa_bp, admin_bp]:
+    for bp in [auth_bp, wallet_bp, orders_bp, plans_bp, withdrawals_bp, referrals_bp, pool_bp, public_settings_bp, mpesa_bp, admin_bp]:
         app.register_blueprint(bp)
 
     # Scheduler
@@ -45,9 +45,10 @@ def create_app(env: str | None = None) -> Flask:
 
 
 def _seed_defaults(app: Flask):
-    """Seed pool and default plans if they don't exist."""
+    """Seed pool, default plans, and platform settings if they don't exist."""
     from .models.pool import PoolSettings
     from .models.plan import Plan
+    from .models.settings import PlatformSettings
 
     if not PoolSettings.query.first():
         db.session.add(PoolSettings(
@@ -65,5 +66,8 @@ def _seed_defaults(app: Flask):
             Plan(name="Premium Plan", duration_days=12, profit_percent=95, min_amount=10_000, max_amount=500_000),
         ]
         db.session.add_all(plans)
+
+    if not PlatformSettings.query.first():
+        db.session.add(PlatformSettings())  # all defaults: all enabled, maintenance off
 
     db.session.commit()

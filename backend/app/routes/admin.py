@@ -217,8 +217,15 @@ def list_orders():
     if status:
         q = q.filter_by(status=status)
     result = q.order_by(Order.created_at.desc()).paginate(page=page, per_page=30, error_out=False)
+    orders = []
+    for o in result.items:
+        d = o.to_dict()
+        d["user_id"] = o.user_id
+        d["user_name"] = o.user.full_name if o.user else ""
+        d["user_email"] = o.user.email if o.user else ""
+        orders.append(d)
     return ok(
-        orders=[o.to_dict() for o in result.items],
+        orders=orders,
         total=result.total,
         pages=result.pages,
     )
@@ -415,3 +422,81 @@ def release_batch():
     pool.last_release_at = datetime.now(timezone.utc)
     db.session.commit()
     return ok(pool=pool.to_dict(), released=float(batch))
+
+
+# ── Platform Settings ────────────────────────────────────
+
+@admin_bp.get("/settings")
+@jwt_required()
+@admin_required
+def admin_get_settings():
+    from ..models.settings import get_settings
+    s = get_settings()
+    return ok(settings=s.to_dict())
+
+
+@admin_bp.put("/settings")
+@jwt_required()
+@admin_required
+def admin_update_settings():
+    from ..models.settings import get_settings
+    s = get_settings()
+    d = request.get_json() or {}
+    for field in (
+        "deposits_enabled",
+        "withdrawals_enabled",
+        "registrations_open",
+        "share_sale_open",
+        "maintenance_mode",
+    ):
+        if field in d:
+            setattr(s, field, bool(d[field]))
+    if "maintenance_message" in d:
+        s.maintenance_message = str(d["maintenance_message"] or "")[:500]
+    db.session.commit()
+    return ok(settings=s.to_dict())
+
+
+# ── Order admin controls ─────────────────────────────────
+
+@admin_bp.post("/orders")
+@jwt_required()
+@admin_required
+def admin_create_order():
+    """Create an order on behalf of a user. Debits the user's wallet."""
+    from ..services.order_service import buy_shares
+    d = request.get_json() or {}
+    user_id = d.get("user_id")
+    plan_id = d.get("plan_id")
+    amount = d.get("amount")
+    if not user_id or not plan_id or amount is None:
+        return err("user_id, plan_id and amount required")
+    target = User.query.get(int(user_id))
+    if not target:
+        return err("User not found", 404)
+    result = buy_shares(int(user_id), int(plan_id), float(amount))
+    if not result["ok"]:
+        return err(result["error"])
+    return ok(order=result["order"].to_dict()), 201
+
+
+@admin_bp.delete("/orders/<int:order_id>")
+@jwt_required()
+@admin_required
+def admin_cancel_order(order_id: int):
+    """Cancel an active order and refund the user's wallet."""
+    order = Order.query.get_or_404(order_id)
+    if order.status not in ("Active", "Matured"):
+        return err(f"Cannot cancel an order in '{order.status}' status")
+    wallet = get_or_create_wallet(order.user_id)
+    refund = float(order.amount_invested)
+    credit_wallet(
+        wallet, refund,
+        tx_type="admin_adjustment",
+        description=f"Order #{order.id} cancelled by admin — refund",
+        reference=f"CXL-{order.id}",
+    )
+    order.status = "Cancelled"
+    order.settled_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return ok(order=order.to_dict(), refunded=refund)

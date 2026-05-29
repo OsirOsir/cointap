@@ -17,6 +17,13 @@ PHONE_RE = re.compile(r"^\+?\d{9,15}$")
 
 @auth_bp.post("/register")
 def register():
+    from ..models.settings import get_settings
+    settings = get_settings()
+    if not settings.registrations_open:
+        return err("New registrations are currently closed. Check back soon.", 403)
+    if settings.maintenance_mode:
+        return err("Platform is in maintenance mode. Please check back shortly.", 503)
+
     d = request.get_json() or {}
     required = ["full_name", "email", "phone", "password"]
     missing = [k for k in required if not d.get(k)]

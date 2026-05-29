@@ -1106,51 +1106,294 @@ function PoolInjectControls({ onInject, saving }: { onInject: (target: 'public' 
 
 // ─── ORDERS MANAGEMENT ────────────────────────────────────
 function OrdersTab() {
-  const orders = useStore((s) => s.orders)
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [filter, setFilter] = useState<'Active' | 'Matured' | 'Settled' | 'Cancelled' | ''>('Active')
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [toast, setToast] = useState('')
 
-  if (orders.length === 0) {
-    return (
-      <div className="glass rounded-2xl p-12 text-center">
-        <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-        <p style={{ color: 'var(--muted-foreground)' }}>No orders yet</p>
+  async function load() {
+    setLoading(true); setError('')
+    try {
+      const data = await adminApi.orders(filter)
+      setOrders(data.orders || [])
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load orders')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [filter])
+
+  function flash(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function forceMature(o: any) {
+    if (!confirm(`Force order #${o.id} to mature now? The user's wallet will be credited with ${formatKsh(Number(o.expected_return))}.`)) return
+    setBusyId(o.id)
+    try {
+      await adminApi.forceMature(o.id)
+      flash(`Order #${o.id} matured + settled`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Force-mature failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function cancel(o: any) {
+    if (!confirm(`Cancel order #${o.id}?\n\nThe user will be refunded ${formatKsh(Number(o.amount_invested))}. This cannot be undone.`)) return
+    setBusyId(o.id)
+    try {
+      await adminApi.cancelOrder(o.id)
+      flash(`Order #${o.id} cancelled + user refunded`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Cancel failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const TABS: { key: typeof filter; label: string }[] = [
+    { key: 'Active', label: 'Active' },
+    { key: 'Matured', label: 'Matured' },
+    { key: 'Settled', label: 'Settled' },
+    { key: 'Cancelled', label: 'Cancelled' },
+    { key: '', label: 'All' },
+  ]
+
+  return (
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="glass rounded-2xl p-2 flex gap-1 flex-1">
+          {TABS.map((t) => (
+            <button key={t.label} onClick={() => setFilter(t.key)}
+              className="flex-1 py-2 rounded-lg text-xs font-bold uppercase transition-all"
+              style={{
+                background: filter === t.key ? 'var(--gradient-gold)' : 'transparent',
+                color: filter === t.key ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+              }}>
+              {t.label}
+            </button>
+          ))}
+          <button onClick={load} className="px-3 rounded-lg" title="Refresh"
+            style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+        <button onClick={() => setCreating(true)}
+          className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
+          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+          <Plus className="w-4 h-4" /> Create on behalf
+        </button>
       </div>
-    )
+
+      {loading && orders.length === 0 ? <LoadingState /> :
+       error ? <ErrorState message={error} onRetry={load} /> :
+       orders.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p style={{ color: 'var(--muted-foreground)' }}>No {filter ? filter.toLowerCase() : ''} orders</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {orders.map((o) => {
+            const status = String(o.status).toLowerCase()
+            return (
+              <div key={o.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-[200px]">
+                  <div className="font-semibold text-white">{o.plan_name}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                    <span className="font-semibold text-white">{o.user_name || `User #${o.user_id}`}</span>
+                    {o.user_email && <> · {o.user_email}</>}
+                  </div>
+                  <div className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                    Order #{o.id} · {o.starts_at && new Date(o.starts_at).toLocaleDateString()} → {o.matures_at && new Date(o.matures_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase" style={{ color: 'var(--muted-foreground)' }}>Invested</div>
+                    <div className="font-mono font-semibold text-white text-sm">{formatKsh(Number(o.amount_invested))}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase" style={{ color: 'var(--muted-foreground)' }}>Return</div>
+                    <div className="font-mono font-semibold text-green-400 text-sm">{formatKsh(Number(o.expected_return))}</div>
+                  </div>
+                  <span className="text-[10px] px-2 py-1 rounded-full font-bold uppercase"
+                    style={{
+                      background:
+                        status === 'active' ? 'rgba(247,147,26,0.15)' :
+                        status === 'matured' ? 'rgba(56,189,248,0.15)' :
+                        status === 'settled' ? 'rgba(74,222,128,0.15)' :
+                        'rgba(239,68,68,0.15)',
+                      color:
+                        status === 'active' ? 'var(--primary)' :
+                        status === 'matured' ? '#38bdf8' :
+                        status === 'settled' ? '#4ade80' : '#ef4444',
+                    }}>
+                    {o.status}
+                  </span>
+                  {(status === 'active' || status === 'matured') && (
+                    <>
+                      <button onClick={() => forceMature(o)} disabled={busyId === o.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                        style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                        Force Mature
+                      </button>
+                      <button onClick={() => cancel(o)} disabled={busyId === o.id}
+                        className="p-1.5 rounded-lg disabled:opacity-50" title="Cancel + refund"
+                        style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {creating && (
+        <CreateOrderModal onClose={() => setCreating(false)} onCreated={(msg) => { flash(msg); load() }} />
+      )}
+    </div>
+  )
+}
+
+function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: (msg: string) => void }) {
+  const [users, setUsers] = useState<any[]>([])
+  const [plans, setPlans] = useState<any[]>([])
+  const [userId, setUserId] = useState<string>('')
+  const [planId, setPlanId] = useState<string>('')
+  const [amount, setAmount] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [u, p] = await Promise.all([adminApi.users(1, ''), fetch('/api/plans/', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('cointap_access')}` },
+        }).then((r) => r.json())])
+        setUsers(u.users || [])
+        setPlans(p.plans || [])
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load users/plans')
+      }
+    })()
+  }, [])
+
+  const selectedUser = users.find((u) => String(u.id) === userId)
+  const selectedPlan = plans.find((p) => String(p.id) === planId)
+  const a = parseFloat(amount) || 0
+
+  async function submit() {
+    setError('')
+    if (!userId) { setError('Pick a user'); return }
+    if (!planId) { setError('Pick a plan'); return }
+    if (a <= 0) { setError('Enter an amount'); return }
+    setBusy(true)
+    try {
+      await adminApi.createOrder(Number(userId), Number(planId), a)
+      onCreated(`Order created for ${selectedUser?.full_name}`)
+      onClose()
+    } catch (e: any) {
+      setError(e?.message || 'Create failed')
+      setBusy(false)
+    }
   }
 
   return (
-    <div className="space-y-2">
-      {orders.map((o) => (
-        <div key={o.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <div className="font-semibold text-white">{o.plan_name}</div>
-            <div className="text-xs font-mono" style={{ color: 'var(--muted-foreground)' }}>#{o.id}</div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Invested</div>
-              <div className="font-mono font-semibold text-white">{formatKsh(o.amount_invested)}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Return</div>
-              <div className="font-mono font-semibold text-green-400">{formatKsh(o.expected_return)}</div>
-            </div>
-            <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase`}
-              style={{
-                background: o.status === 'active' ? 'rgba(247,147,26,0.15)' : 'rgba(74,222,128,0.15)',
-                color: o.status === 'active' ? 'var(--primary)' : '#4ade80',
-              }}>
-              {o.status}
-            </span>
-            {o.status === 'active' && (
-              <button onClick={() => store.adminForceMaturity(o.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
-                Force Mature
-              </button>
-            )}
-          </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }} onClick={onClose}>
+      <div className="glass rounded-3xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white">Create Order on Behalf</h3>
+          <button onClick={onClose} className="p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <X className="w-4 h-4 text-white" />
+          </button>
         </div>
-      ))}
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>User</label>
+            <select value={userId} onChange={(e) => setUserId(e.target.value)}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <option value="">— Select user —</option>
+              {users.filter((u) => u.role !== 'admin').map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} ({u.email}) — Wallet: {formatKsh(Number(u.wallet?.balance ?? 0))}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Plan</label>
+            <select value={planId} onChange={(e) => setPlanId(e.target.value)}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <option value="">— Select plan —</option>
+              {plans.filter((p) => p.is_active).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({Number(p.profit_percent)}% / {p.duration_days}d) — {formatKsh(Number(p.min_amount))} → {formatKsh(Number(p.max_amount))}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Amount (Ksh)</label>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+              placeholder={selectedPlan ? `Between ${formatKsh(Number(selectedPlan.min_amount))} and ${formatKsh(Number(selectedPlan.max_amount))}` : ''}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+
+          {selectedPlan && a > 0 && (
+            <div className="rounded-xl p-3 text-xs"
+              style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+              <div className="flex justify-between mb-1">
+                <span style={{ color: 'var(--muted-foreground)' }}>Expected return</span>
+                <span className="font-mono font-bold text-green-400">
+                  {formatKsh(a + (a * Number(selectedPlan.profit_percent)) / 100)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--muted-foreground)' }}>Matures in</span>
+                <span className="font-mono text-white">{selectedPlan.duration_days} days</span>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <button onClick={submit} disabled={busy}
+            className="w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-60"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            {busy ? 'Creating…' : 'Create Order'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1533,68 +1776,150 @@ function AnnouncementsTab() {
 
 // ─── SYSTEM SETTINGS ──────────────────────────────────────
 function SettingsTab() {
-  const settings = useStore((s) => s.settings)
+  const [settings, setSettings] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState('')
 
-  const toggles: { key: keyof typeof settings; label: string; description: string }[] = [
-    { key: 'deposits_enabled', label: 'Deposits Enabled', description: 'Allow users to deposit funds' },
-    { key: 'withdrawals_enabled', label: 'Withdrawals Enabled', description: 'Allow users to request withdrawals' },
-    { key: 'registrations_enabled', label: 'Registrations Open', description: 'Allow new user signups' },
-    { key: 'sale_open', label: 'Share Sale Window', description: 'Allow share purchases' },
-    { key: 'maintenance_mode', label: 'Maintenance Mode', description: 'Show maintenance banner platform-wide' },
+  async function load() {
+    setLoading(true); setError('')
+    try {
+      const data = await adminApi.getSettings()
+      setSettings(data.settings)
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load settings')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  function flash(msg: string) { setToast(msg); setTimeout(() => setToast(''), 2500) }
+
+  async function setToggle(key: string, value: boolean) {
+    if (!settings) return
+    // Optimistic update
+    const previous = settings[key]
+    setSettings({ ...settings, [key]: value })
+    setSaving(true)
+    try {
+      const data = await adminApi.updateSettings({ [key]: value })
+      setSettings(data.settings)
+      flash(`${labelFor(key)}: ${value ? 'enabled' : 'disabled'}`)
+    } catch (e: any) {
+      // Roll back on failure
+      setSettings({ ...settings, [key]: previous })
+      flash(e?.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveMessage() {
+    if (!settings) return
+    setSaving(true)
+    try {
+      const data = await adminApi.updateSettings({ maintenance_message: settings.maintenance_message })
+      setSettings(data.settings)
+      flash('Maintenance message saved')
+    } catch (e: any) {
+      flash(e?.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function labelFor(key: string): string {
+    const t = TOGGLES.find((x) => x.key === key)
+    return t?.label || key
+  }
+
+  const TOGGLES: { key: string; label: string; description: string; risky?: boolean }[] = [
+    { key: 'deposits_enabled', label: 'Deposits Enabled', description: 'Allow users to deposit funds via M-Pesa' },
+    { key: 'withdrawals_enabled', label: 'Withdrawals Enabled', description: 'Allow users to request payouts' },
+    { key: 'registrations_open', label: 'Registrations Open', description: 'Allow new user signups' },
+    { key: 'share_sale_open', label: 'Share Sale Window', description: 'Allow share purchases (buy orders)' },
+    { key: 'maintenance_mode', label: 'Maintenance Mode', description: 'Show site-wide banner + block deposits / withdrawals / buys / registration', risky: true },
   ]
 
-  const numbers: { key: keyof typeof settings; label: string; suffix?: string }[] = [
-    { key: 'min_deposit', label: 'Minimum Deposit', suffix: 'Ksh' },
-    { key: 'max_deposit', label: 'Maximum Deposit', suffix: 'Ksh' },
-    { key: 'min_withdrawal', label: 'Minimum Withdrawal', suffix: 'Ksh' },
-    { key: 'referral_bonus_percent', label: 'Referral Bonus', suffix: '%' },
-  ]
+  if (loading && !settings) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={load} />
+  if (!settings) return null
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
       <div className="glass rounded-2xl p-5">
-        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-          <SettingsIcon className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-          Platform Toggles
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-white flex items-center gap-2">
+            <SettingsIcon className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+            Platform Toggles
+          </h3>
+          <button onClick={load} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+        </div>
         <div className="space-y-2">
-          {toggles.map((t) => (
-            <div key={t.key} className="flex items-center justify-between p-3 rounded-xl"
-              style={{ background: 'rgba(0,0,0,0.2)' }}>
-              <div>
-                <div className="text-sm font-semibold text-white">{t.label}</div>
-                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t.description}</div>
+          {TOGGLES.map((t) => {
+            const on = !!settings[t.key]
+            return (
+              <div key={t.key} className="flex items-center justify-between gap-3 p-3 rounded-xl"
+                style={{
+                  background: t.risky && on ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.2)',
+                  border: t.risky && on ? '1px solid rgba(239,68,68,0.3)' : '1px solid transparent',
+                }}>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-white flex items-center gap-2">
+                    {t.label}
+                    {t.risky && on && (
+                      <span className="text-[9px] px-2 py-0.5 rounded-full font-bold"
+                        style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t.description}</div>
+                </div>
+                <button onClick={() => setToggle(t.key, !on)} disabled={saving}
+                  className="relative w-12 h-6 rounded-full transition-all disabled:opacity-50 flex-shrink-0"
+                  style={{ background: on ? 'var(--primary)' : 'rgba(255,255,255,0.1)' }}>
+                  <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: on ? '26px' : '4px' }} />
+                </button>
               </div>
-              <button onClick={() => store.updateSettings({ [t.key]: !settings[t.key] })}
-                className="relative w-12 h-6 rounded-full transition-all"
-                style={{ background: settings[t.key] ? 'var(--primary)' : 'rgba(255,255,255,0.1)' }}>
-                <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
-                  style={{ left: settings[t.key] ? '26px' : '4px' }} />
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
-      <div className="glass rounded-2xl p-5">
-        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-          Financial Limits
-        </h3>
-        <div className="grid sm:grid-cols-2 gap-3">
-          {numbers.map((n) => (
-            <div key={n.key}>
-              <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
-                {n.label} {n.suffix && `(${n.suffix})`}
-              </label>
-              <input type="number" value={settings[n.key] as number}
-                onChange={(e) => store.updateSettings({ [n.key]: parseFloat(e.target.value) || 0 })}
-                className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
-                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
-            </div>
-          ))}
+      {settings.maintenance_mode && (
+        <div className="glass rounded-2xl p-5">
+          <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            Maintenance Banner Message
+          </h3>
+          <textarea value={settings.maintenance_message || ''}
+            onChange={(e) => setSettings({ ...settings, maintenance_message: e.target.value })}
+            rows={3} maxLength={500}
+            placeholder="Message displayed at the top of every page..."
+            className="w-full px-4 py-3 rounded-xl text-white font-medium text-sm resize-none"
+            style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          <button onClick={saveMessage} disabled={saving}
+            className="mt-3 w-full py-2.5 rounded-xl text-sm font-bold glow-gold disabled:opacity-60"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            {saving ? 'Saving…' : 'Save Message'}
+          </button>
         </div>
-      </div>
+      )}
     </div>
   )
 }

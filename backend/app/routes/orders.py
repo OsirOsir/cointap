@@ -10,6 +10,13 @@ orders_bp = Blueprint("orders", __name__, url_prefix="/api/orders")
 @orders_bp.post("/buy")
 @jwt_required()
 def buy():
+    from ..models.settings import get_settings
+    settings = get_settings()
+    if not settings.share_sale_open:
+        return err("Share sales are temporarily closed. Please try again later.", 403)
+    if settings.maintenance_mode:
+        return err("Platform is in maintenance mode. Please check back shortly.", 503)
+
     user = current_user()
     d = request.get_json() or {}
     plan_id = d.get("plan_id")

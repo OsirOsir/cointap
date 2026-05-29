@@ -37,6 +37,13 @@ def get_transactions():
 @wallet_bp.post("/deposit/initiate")
 @jwt_required()
 def deposit_initiate():
+    from ..models.settings import get_settings
+    settings = get_settings()
+    if not settings.deposits_enabled:
+        return err("Deposits are temporarily disabled. Please try again later.", 403)
+    if settings.maintenance_mode:
+        return err("Platform is in maintenance mode. Please check back shortly.", 503)
+
     user = current_user()
     d = request.get_json() or {}
     amount = float(d.get("amount", 0))

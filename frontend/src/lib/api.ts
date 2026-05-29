@@ -263,7 +263,10 @@ export const adminApi = {
     http.put(`/admin/users/${userId}/suspend`, active !== undefined ? { active } : {}),
   deleteUser: (userId: number) => http.del(`/admin/users/${userId}`),
   orders: (status = '') => http.get(`/admin/orders${status ? `?status=${status}` : ''}`),
+  createOrder: (user_id: number, plan_id: number, amount: number) =>
+    http.post('/admin/orders', { user_id, plan_id, amount }),
   forceMature: (orderId: number) => http.put(`/admin/orders/${orderId}/force-mature`),
+  cancelOrder: (orderId: number) => http.del(`/admin/orders/${orderId}`),
   withdrawals: (status = '') => http.get(`/admin/withdrawals${status ? `?status=${status}` : ''}`),
   approveWithdrawal: (id: number) => http.put(`/admin/withdrawals/${id}/approve`),
   rejectWithdrawal: (id: number, reason = '') => http.put(`/admin/withdrawals/${id}/reject`, { reason }),
@@ -272,6 +275,13 @@ export const adminApi = {
   deletePlan: (id: number) => http.del(`/admin/plans/${id}`),
   updatePool: (pool: any) => http.put('/admin/pool', pool),
   releaseBatch: () => http.post('/admin/pool/release-batch'),
+  getSettings: () => http.get('/admin/settings'),
+  updateSettings: (settings: any) => http.put('/admin/settings', settings),
+}
+
+// Public settings — no auth, used to check maintenance mode globally
+export const settingsApi = {
+  get: () => fetch('/api/settings').then((r) => r.json()),
 }
 
 export { ApiError }
