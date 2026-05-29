@@ -20,6 +20,11 @@ class PlatformSettings(db.Model):
     share_sale_open = db.Column(db.Boolean, default=True, nullable=False)
     maintenance_mode = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Referral milestone bonus — pays user a one-time bonus when they reach
+    # a threshold of credited (real-purchase-backed) referrals.
+    referral_milestone_threshold = db.Column(db.Integer, default=10, nullable=False)
+    referral_milestone_amount = db.Column(db.Numeric(14, 2), default=100, nullable=False)
+
     # Optional message shown alongside maintenance banner
     maintenance_message = db.Column(
         db.Text,
@@ -40,6 +45,8 @@ class PlatformSettings(db.Model):
             "share_sale_open": bool(self.share_sale_open),
             "maintenance_mode": bool(self.maintenance_mode),
             "maintenance_message": self.maintenance_message or "",
+            "referral_milestone_threshold": int(self.referral_milestone_threshold or 0),
+            "referral_milestone_amount": float(self.referral_milestone_amount or 0),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 

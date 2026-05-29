@@ -2062,6 +2062,68 @@ function SettingsTab() {
           </button>
         </div>
       )}
+
+      {/* Referral Milestone Bonus */}
+      <div className="glass rounded-2xl p-5">
+        <h3 className="font-bold text-white mb-1 flex items-center gap-2">
+          🎁 Referral Milestone Bonus
+        </h3>
+        <p className="text-xs mb-4" style={{ color: 'var(--muted-foreground)' }}>
+          One-time bonus credited to a user's wallet when they reach this many
+          successful (credited) referrals. Set <span className="text-white font-semibold">0</span> on
+          either field to disable.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Referrals Required (Threshold)
+            </label>
+            <input type="number" min={0} value={settings.referral_milestone_threshold ?? 10}
+              onChange={(e) => setSettings({ ...settings, referral_milestone_threshold: parseInt(e.target.value) || 0 })}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Bonus Amount (Ksh)
+            </label>
+            <input type="number" min={0} step="any" value={settings.referral_milestone_amount ?? 100}
+              onChange={(e) => setSettings({ ...settings, referral_milestone_amount: parseFloat(e.target.value) || 0 })}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 rounded-xl text-xs"
+          style={{ background: 'rgba(247,147,26,0.06)', border: '1px solid rgba(247,147,26,0.12)' }}>
+          <span style={{ color: 'var(--muted-foreground)' }}>Preview: </span>
+          <span className="text-white font-semibold">
+            Users get <span style={{ color: 'var(--primary)' }}>Ksh {Number(settings.referral_milestone_amount || 0).toLocaleString()}</span> credited
+            to their wallet after reaching <span style={{ color: 'var(--primary)' }}>{settings.referral_milestone_threshold || 0}</span> successful referrals.
+          </span>
+        </div>
+
+        <button onClick={async () => {
+          setSaving(true)
+          try {
+            const data = await adminApi.updateSettings({
+              referral_milestone_threshold: settings.referral_milestone_threshold,
+              referral_milestone_amount: settings.referral_milestone_amount,
+            })
+            setSettings(data.settings)
+            flash('Milestone bonus settings saved')
+          } catch (e: any) {
+            flash(e?.message || 'Save failed')
+          } finally {
+            setSaving(false)
+          }
+        }} disabled={saving}
+          className="mt-4 w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-60"
+          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+          {saving ? 'Saving…' : 'Save Milestone Bonus Settings'}
+        </button>
+      </div>
     </div>
   )
 }

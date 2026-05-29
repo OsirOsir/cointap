@@ -19,6 +19,8 @@ class User(db.Model):
     promo_code = db.Column(db.String(20), nullable=True)   # referral code they used at signup
     role = db.Column(db.String(10), default="user")        # 'user' | 'admin'
     is_active = db.Column(db.Boolean, default=True)
+    # Set when the user has been awarded the referral-milestone bonus (one-shot)
+    milestone_bonus_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))

@@ -20,7 +20,7 @@ export function ForgotPassword() {
       {!sent ? (
         <form onSubmit={submit}>
           <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@cointap.trade" required />
+            placeholder="you@cointap.online" required />
           <button type="submit"
             className="w-full py-3.5 rounded-xl font-semibold glow-gold hover:opacity-90 transition"
             style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>

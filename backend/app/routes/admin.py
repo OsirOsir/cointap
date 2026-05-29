@@ -453,6 +453,23 @@ def admin_update_settings():
             setattr(s, field, bool(d[field]))
     if "maintenance_message" in d:
         s.maintenance_message = str(d["maintenance_message"] or "")[:500]
+    # Referral milestone bonus controls
+    if "referral_milestone_threshold" in d:
+        try:
+            t = int(d["referral_milestone_threshold"])
+            if t < 0:
+                return err("Threshold cannot be negative")
+            s.referral_milestone_threshold = t
+        except (ValueError, TypeError):
+            return err("Threshold must be a whole number")
+    if "referral_milestone_amount" in d:
+        try:
+            a = float(d["referral_milestone_amount"])
+            if a < 0:
+                return err("Amount cannot be negative")
+            s.referral_milestone_amount = a
+        except (ValueError, TypeError):
+            return err("Amount must be a number")
     db.session.commit()
     return ok(settings=s.to_dict())
 

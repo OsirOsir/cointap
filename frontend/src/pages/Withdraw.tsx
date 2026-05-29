@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Shield, AlertTriangle, Lock, Clock, CheckCircle } from 'lucide-react'
 import { formatKsh, store, useStore } from '@/lib/cointap-store'
 import { TwoFactorInput, EmailVerificationBanner } from '@/components/cointap/Security'
+import { UsdtBadge } from '@/lib/usdt'
 
 const TWOFA_THRESHOLD = 5_000
 const COOLDOWN_MS = 60 * 60_000   // 1 hour demo
@@ -152,6 +153,7 @@ export function Withdraw() {
             style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Available</div>
             <div className="text-xl font-bold font-mono text-gradient-gold mt-1">{formatKsh(wallet.balance)}</div>
+            <div className="mt-1"><UsdtBadge ksh={wallet.balance} size="xs" variant="gold" /></div>
           </div>
           <div className="rounded-xl p-4"
             style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>

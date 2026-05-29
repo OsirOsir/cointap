@@ -334,7 +334,7 @@ export function Landing() {
             ))}
           </div>
           <div className="text-xs text-center sm:text-right" style={{ color: 'var(--muted-foreground)' }}>
-            <div>© {new Date().getFullYear()} CoinTap · cointap.trade</div>
+            <div>© {new Date().getFullYear()} CoinTap · cointap.online</div>
             <div className="mt-1">Investing involves risk. Track responsibly.</div>
           </div>
         </div>

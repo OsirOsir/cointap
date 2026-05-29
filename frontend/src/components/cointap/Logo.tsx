@@ -92,7 +92,7 @@ export function Logo({ size = 40, withText = true }: { size?: number; withText?:
           <div className="font-display font-bold text-xl tracking-tight text-white">CoinTap</div>
           <div className="text-[10px] tracking-widest uppercase mt-0.5"
             style={{ color: 'var(--muted-foreground)' }}>
-            cointap.trade
+            cointap.online
           </div>
         </div>
       )}

@@ -291,7 +291,7 @@ export function AppLayout() {
             Sign out
           </button>
           <div className="text-[10px] text-center mt-3" style={{ color: 'var(--muted-foreground)' }}>
-            CoinTap v1.0 · cointap.trade
+            CoinTap v1.0 · cointap.online
           </div>
         </div>
       </aside>

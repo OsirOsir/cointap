@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownLeft, ArrowUpRight, X } from 'lucide-react'
 import { formatKsh, store, useStore, type WalletTx } from '@/lib/cointap-store'
+import { UsdtBadge } from '@/lib/usdt'
 
 const typeLabel: Record<WalletTx['type'], string> = {
   deposit: 'Deposit',
@@ -57,6 +58,9 @@ export function Wallet() {
       <div className="glass rounded-2xl p-6 relative overflow-hidden">
         <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Wallet Balance</div>
         <div className="text-4xl sm:text-5xl font-bold text-gradient-gold font-mono mt-1">{formatKsh(wallet.balance)}</div>
+        <div className="mt-1.5">
+          <UsdtBadge ksh={wallet.balance} size="sm" variant="gold" />
+        </div>
         <div className="mt-5 grid grid-cols-3 gap-3 text-center">
           <div>
             <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Deposited</div>

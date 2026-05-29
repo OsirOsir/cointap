@@ -166,3 +166,44 @@ def _maybe_credit_referral_bonus(user_id: int, order_id: int, amount: float):
         description=f"Referral bonus — {user.full_name}",
         reference=_ref("REF"),
     )
+
+    # Check whether this credit pushed the referrer to a milestone bonus
+    _maybe_credit_milestone_bonus(referrer)
+
+
+def _maybe_credit_milestone_bonus(referrer):
+    """If the referrer has hit the configured threshold AND hasn't been
+    awarded the milestone bonus before, credit them.
+
+    One-shot per user — tracked by user.milestone_bonus_at.
+    """
+    from ..models.user import User
+    from ..models.settings import get_settings
+
+    if referrer.milestone_bonus_at is not None:
+        return  # already awarded
+
+    settings = get_settings()
+    threshold = int(settings.referral_milestone_threshold or 0)
+    amount = float(settings.referral_milestone_amount or 0)
+    if threshold <= 0 or amount <= 0:
+        return
+
+    credited_count = Referral.query.filter_by(
+        referrer_id=referrer.id, status="credited"
+    ).count()
+
+    if credited_count < threshold:
+        return
+
+    # Award it
+    wallet = get_or_create_wallet(referrer.id)
+    credit_wallet(
+        wallet,
+        amount,
+        tx_type="referral_bonus",
+        description=f"🎁 Milestone bonus — {threshold} successful referrals",
+        reference=_ref("MILE"),
+    )
+    referrer.milestone_bonus_at = datetime.now(timezone.utc)
+    db.session.add(referrer)

@@ -139,7 +139,7 @@ export function Login() {
       <form onSubmit={submitCredentials}>
         <fieldset disabled={isLocked} className="space-y-0">
           <Field label="Email or phone" type="text" value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@cointap.trade" required />
+            placeholder="you@cointap.online" required />
           <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••" required />
         </fieldset>

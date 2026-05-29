@@ -9,6 +9,7 @@ import { Countdown } from '@/components/cointap/Countdown'
 import { NodeBackground } from '@/components/cointap/NodeBackground'
 import { EmailVerificationBanner } from '@/components/cointap/Security'
 import { AnnouncementsBanner } from '@/components/cointap/AnnouncementsBanner'
+import { UsdtBadge } from '@/lib/usdt'
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -132,6 +133,9 @@ export function Dashboard() {
                 }}>
                 {formatKsh(wallet.balance)}
               </div>
+            </div>
+            <div className="mt-1.5">
+              <UsdtBadge ksh={wallet.balance} size="sm" variant="gold" />
             </div>
 
             {/* ROI line */}

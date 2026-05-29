@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Lock, X, Zap, Shield, Coins } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan } from '@/lib/cointap-store'
+import { UsdtBadge } from '@/lib/usdt'
 
 export function Plans() {
   const plans = useStore((s) => s.plans)
@@ -50,6 +51,9 @@ export function Plans() {
             <div className="text-3xl sm:text-4xl font-bold text-gradient-gold font-mono mt-2">
               {formatKsh(pool.public_pool_balance)}
             </div>
+            <div className="mt-1">
+              <UsdtBadge ksh={pool.public_pool_balance} size="xs" variant="gold" />
+            </div>
             <p className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>
               {pool.public_pool_balance <= pool.sold_out_floor ? 'Low stock — new batch releasing soon' : 'Plenty available'}
             </p>
@@ -60,6 +64,9 @@ export function Plans() {
             </div>
             <div className="text-3xl sm:text-4xl font-bold text-white font-mono mt-2">
               {formatKsh(wallet.balance)}
+            </div>
+            <div className="mt-1">
+              <UsdtBadge ksh={wallet.balance} size="xs" variant="muted" />
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>
               Ready to invest

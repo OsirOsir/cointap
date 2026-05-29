@@ -3,6 +3,7 @@ import { User as UserIcon, Mail, Phone, Lock, Check, Copy, Shield, AlertCircle, 
 import { useNavigate } from 'react-router-dom'
 import { store, useStore } from '@/lib/cointap-store'
 import { PasswordStrength, getPasswordStrength, TwoFactorInput } from '@/components/cointap/Security'
+import { shareOrCopy } from '@/lib/share'
 
 export function Profile() {
   const user = useStore((s) => s.user)
@@ -177,7 +178,7 @@ function TwoFactorSection() {
               style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--primary)' }}>
               {secret}
             </div>
-            <button onClick={() => navigator.clipboard?.writeText(secret)}
+            <button onClick={() => shareOrCopy({ text: secret, preferShare: false })}
               className="mt-2 text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--primary)' }}>
               <Copy className="w-3 h-3" /> Copy secret
             </button>
@@ -473,13 +474,18 @@ function SecuritySection() {
 function ReferralSection() {
   const user = useStore((s) => s.user)!
   const [copied, setCopied] = useState(false)
-  const link = `https://cointap.trade/register?ref=${user.referral_code}`
+  const link = `https://cointap.online/register?ref=${user.referral_code}`
 
-  function copy() {
-    navigator.clipboard?.writeText(link).then(() => {
+  async function copy() {
+    const ok = await shareOrCopy({
+      text: link,
+      title: 'Join me on CoinTap',
+      shareText: `Sign up with my referral code: ${user.referral_code}\n${link}`,
+    })
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    }
   }
 
   return (

@@ -580,7 +580,7 @@ export const store = {
 
   clearLockout() {
     set((s) => ({ ...s, lockout_until: undefined, login_attempts: [] }))
-    logSecurityEvent('login_unlocked', state.user?.email || 'admin@cointap.trade', 'Lockout manually cleared by admin', 'info')
+    logSecurityEvent('login_unlocked', state.user?.email || 'admin@cointap.online', 'Lockout manually cleared by admin', 'info')
   },
 
   logout() { set((s) => ({ ...s, user: null })) },
@@ -967,7 +967,7 @@ function logActivity(action: string, target: string, details: string) {
     action,
     target,
     details,
-    admin_email: state.user?.email || 'admin@cointap.trade',
+    admin_email: state.user?.email || 'admin@cointap.online',
     created_at: Date.now(),
   }
   set((s) => ({ ...s, activity_logs: [log, ...s.activity_logs].slice(0, 200) }))
