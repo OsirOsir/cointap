@@ -2,7 +2,10 @@
 // Real auth/wallet flows call the Flask backend via `api.ts`.
 // Mock methods remain for pages not yet migrated.
 import { useSyncExternalStore } from 'react'
-import { authApi, walletApi } from './api'
+import {
+  authApi, walletApi, plansApi, ordersApi, withdrawalsApi, poolApi,
+  normalizeOrder, normalizePlan, normalizeWithdrawal, normalizeWallet,
+} from './api'
 
 export type TxType =
   | 'deposit'
@@ -297,16 +300,92 @@ export const store = {
   async apiLoadWallet() {
     try {
       const w = await walletApi.get()
+      set((s) => ({ ...s, wallet: normalizeWallet(w) }))
+    } catch { /* wallet load failed silently */ }
+  },
+
+  /** Load the active plans from the backend. */
+  async apiLoadPlans() {
+    try {
+      const plans = await plansApi.list()
+      set((s) => ({ ...s, plans: (plans || []).map(normalizePlan) }))
+    } catch { /* ignore */ }
+  },
+
+  /** Load the current user's orders from the backend. */
+  async apiLoadOrders() {
+    try {
+      const orders = await ordersApi.list()
+      set((s) => ({ ...s, orders: (orders || []).map(normalizeOrder) }))
+    } catch { /* ignore */ }
+  },
+
+  /** Load the current user's withdrawals from the backend. */
+  async apiLoadWithdrawals() {
+    try {
+      const wds = await withdrawalsApi.list()
+      set((s) => ({ ...s, withdrawals: (wds || []).map(normalizeWithdrawal) }))
+    } catch { /* ignore */ }
+  },
+
+  /** Load the live pool status from the backend. */
+  async apiLoadPool() {
+    try {
+      const data = await poolApi.status()
+      const p = data.pool || data
       set((s) => ({
         ...s,
-        wallet: {
-          balance: Number(w.balance),
-          total_deposited: Number(w.total_deposited),
-          total_withdrawn: Number(w.total_withdrawn),
-          total_earned: Number(w.total_earned),
+        pool: {
+          public_pool_balance: Number(p.public_pool_balance ?? 0),
+          reserve_pool_balance: Number(p.reserve_pool_balance ?? 0),
+          sold_out_floor: Number(p.sold_out_floor ?? 0),
+          batch_size: Number(p.batch_release_amount ?? p.batch_size ?? 0),
         },
       }))
-    } catch { /* wallet load failed silently */ }
+    } catch { /* ignore */ }
+  },
+
+  /** Load everything a logged-in user needs in one call. */
+  async apiLoadAll() {
+    await Promise.all([
+      store.apiLoadWallet(),
+      store.apiLoadPlans(),
+      store.apiLoadOrders(),
+      store.apiLoadWithdrawals(),
+      store.apiLoadPool(),
+    ])
+  },
+
+  /** Buy shares via the backend, then refresh wallet + orders + pool. */
+  async apiBuyShares(planId: string, amount: number): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await ordersApi.buy(Number(planId), amount)
+      await Promise.all([store.apiLoadWallet(), store.apiLoadOrders(), store.apiLoadPool()])
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Purchase failed' }
+    }
+  },
+
+  /** Request a withdrawal via the backend, then refresh wallet + withdrawals. */
+  async apiRequestWithdrawal(amount: number, phone: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await withdrawalsApi.request(amount, phone)
+      await Promise.all([store.apiLoadWallet(), store.apiLoadWithdrawals()])
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Withdrawal request failed' }
+    }
+  },
+
+  /** Initiate an M-Pesa deposit (STK push) via the backend. */
+  async apiInitiateDeposit(amount: number, phone: string): Promise<{ ok: boolean; error?: string; message?: string }> {
+    try {
+      const res = await walletApi.initiateDeposit(amount, phone)
+      return { ok: true, message: res.message || 'M-Pesa prompt sent to your phone' }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Deposit failed' }
+    }
   },
 
   /** Update profile via the backend. */

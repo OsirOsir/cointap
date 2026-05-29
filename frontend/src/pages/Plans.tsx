@@ -172,15 +172,18 @@ function BuyModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
   const wallet = useStore((s) => s.wallet)
   const [amount, setAmount] = useState(String(plan.min_amount))
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const a = parseFloat(amount) || 0
   const ret = a + (a * plan.profit_percent) / 100
   const profit = ret - a
   const isValid = a >= plan.min_amount && a <= plan.max_amount && a <= wallet.balance
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    const res = store.buyShares(plan, a)
+    setBusy(true)
+    const res = await store.apiBuyShares(plan.id, a)
+    setBusy(false)
     if (!res.ok) { setError(res.error || 'Failed'); return }
     onClose()
     navigate('/orders')
@@ -255,10 +258,10 @@ function BuyModal({ plan, onClose }: { plan: Plan; onClose: () => void }) {
           )}
 
           {/* Submit button */}
-          <button type="submit" disabled={!isValid}
+          <button type="submit" disabled={!isValid || busy}
             className="w-full py-4 rounded-xl font-bold uppercase tracking-wider glow-gold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 transition-all"
             style={{ background: isValid ? 'var(--gradient-gold)' : 'rgba(247,147,26,0.2)', color: 'var(--primary-foreground)' }}>
-            {isValid ? 'Confirm Investment' : 'Invalid Amount'}
+            {busy ? 'Processing…' : isValid ? 'Confirm Investment' : 'Invalid Amount'}
           </button>
         </form>
 

@@ -25,10 +25,13 @@ export function AppLayout() {
     if (!user) navigate('/login')
   }, [user, navigate])
 
-  // Auto-settle matured orders
+  // Load all real data from backend on entry, then refresh periodically
   useEffect(() => {
-    store.settleMaturedOrders()
-    const t = setInterval(() => store.settleMaturedOrders(), 5000)
+    store.apiLoadAll()
+    const t = setInterval(() => {
+      store.apiLoadWallet()
+      store.apiLoadOrders()
+    }, 15000)
     return () => clearInterval(t)
   }, [])
 

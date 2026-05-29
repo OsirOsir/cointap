@@ -23,20 +23,25 @@ export function Wallet() {
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState('')
 
-  function deposit(e: React.FormEvent) {
+  async function deposit(e: React.FormEvent) {
     e.preventDefault()
     const a = parseFloat(amount)
     if (!a || a < 10) { setToast('Minimum deposit is Ksh 10'); return }
+    if (!phone) { setToast('Enter your M-Pesa phone number'); return }
     setLoading(true)
-    setToast('M-Pesa prompt sent to your phone...')
-    setTimeout(() => {
-      store.deposit(a)
-      setToast(`Wallet credited ${formatKsh(a)} ✓`)
-      setLoading(false)
-      setShowDeposit(false)
-      setAmount('')
-      setTimeout(() => setToast(''), 3000)
-    }, 1800)
+    const res = await store.apiInitiateDeposit(a, phone)
+    setLoading(false)
+    if (!res.ok) {
+      setToast(res.error || 'Deposit failed')
+      setTimeout(() => setToast(''), 4000)
+      return
+    }
+    setToast(res.message || 'M-Pesa prompt sent to your phone. Approve on your handset.')
+    setShowDeposit(false)
+    setAmount('')
+    // Refresh wallet shortly after (callback credits asynchronously)
+    setTimeout(() => store.apiLoadWallet(), 8000)
+    setTimeout(() => setToast(''), 6000)
   }
 
   return (

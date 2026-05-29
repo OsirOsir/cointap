@@ -187,6 +187,66 @@ export const referralsApi = {
   list: () => http.get('/referrals/'),
 }
 
+// ─── NORMALIZERS ─────────────────────────────────────────────
+// Convert backend data shapes → the shapes the frontend store expects.
+//   • IDs: number → string
+//   • Dates: ISO string → epoch ms (number)
+//   • Order status: "Active"/"Settled" → "active"/"settled"
+
+const toMs = (iso: string | null | undefined): number =>
+  iso ? new Date(iso).getTime() : Date.now()
+
+export function normalizeOrder(o: any) {
+  const statusMap: Record<string, string> = {
+    Active: 'active', Matured: 'matured', Settled: 'settled', Cancelled: 'cancelled',
+  }
+  return {
+    id: String(o.id),
+    plan_id: String(o.plan_id),
+    plan_name: o.plan_name || '',
+    amount_invested: Number(o.amount_invested),
+    profit_percent: Number(o.profit_percent),
+    expected_return: Number(o.expected_return),
+    status: (statusMap[o.status] || String(o.status).toLowerCase()) as 'active' | 'matured' | 'settled' | 'cancelled',
+    starts_at: toMs(o.starts_at),
+    matures_at: toMs(o.matures_at),
+    settled_at: o.settled_at ? toMs(o.settled_at) : undefined,
+  }
+}
+
+export function normalizePlan(p: any) {
+  return {
+    id: String(p.id),
+    name: p.name,
+    duration_days: Number(p.duration_days),
+    profit_percent: Number(p.profit_percent),
+    min_amount: Number(p.min_amount),
+    max_amount: Number(p.max_amount),
+    is_active: !!p.is_active,
+  }
+}
+
+export function normalizeWithdrawal(w: any) {
+  return {
+    id: String(w.id),
+    amount: Number(w.amount),
+    phone: w.phone,
+    status: String(w.status).toLowerCase() as 'pending' | 'processing' | 'paid' | 'rejected',
+    requested_at: toMs(w.requested_at),
+    processed_at: w.processed_at ? toMs(w.processed_at) : undefined,
+    mpesa_reference: w.mpesa_reference || undefined,
+  }
+}
+
+export function normalizeWallet(w: any) {
+  return {
+    balance: Number(w?.balance ?? 0),
+    total_deposited: Number(w?.total_deposited ?? 0),
+    total_withdrawn: Number(w?.total_withdrawn ?? 0),
+    total_earned: Number(w?.total_earned ?? 0),
+  }
+}
+
 export const adminApi = {
   dashboard: () => http.get('/admin/dashboard'),
   users: (page = 1, q = '') => http.get(`/admin/users?page=${page}&q=${encodeURIComponent(q)}`),

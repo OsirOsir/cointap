@@ -41,17 +41,21 @@ export function Withdraw() {
   const dailyUsed = user.daily_withdrawal_total || 0
   const dailyRemaining = Math.max(0, DAILY_LIMIT - dailyUsed)
 
-  function attemptWithdraw(e: React.FormEvent | null, code?: string) {
+  async function attemptWithdraw(e: React.FormEvent | null, code?: string) {
     e?.preventDefault()
     setError(''); setSuccess('')
 
-    const res = store.requestWithdrawal(numericAmount, phone, code)
+    // Client-side 2FA gate for large amounts (UX layer)
+    if (numericAmount >= TWOFA_THRESHOLD && !code) {
+      setStep('2fa')
+      return
+    }
+
+    // Real withdrawal request to the backend
+    const res = await store.apiRequestWithdrawal(numericAmount, phone)
     if (!res.ok) {
-      if (res.requires_2fa) {
-        setStep('2fa')
-        return
-      }
       setError(res.error!)
+      setStep('form')
       return
     }
     setSuccess('✓ Withdrawal requested — pending admin approval')
