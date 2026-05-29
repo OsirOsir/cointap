@@ -8,6 +8,7 @@ import { formatKsh, useStore } from '@/lib/cointap-store'
 import { Countdown } from '@/components/cointap/Countdown'
 import { NodeBackground } from '@/components/cointap/NodeBackground'
 import { EmailVerificationBanner } from '@/components/cointap/Security'
+import { AnnouncementsBanner } from '@/components/cointap/AnnouncementsBanner'
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -75,6 +76,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-5 pb-10">
+      <AnnouncementsBanner />
       {user && !user.email_verified && (
         <EmailVerificationBanner onVerify={() => navigate('/verify-email')} />
       )}

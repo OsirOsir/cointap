@@ -500,3 +500,79 @@ def admin_cancel_order(order_id: int):
     order.settled_at = datetime.now(timezone.utc)
     db.session.commit()
     return ok(order=order.to_dict(), refunded=refund)
+
+
+# ── Announcements ────────────────────────────────────────
+
+@admin_bp.get("/announcements")
+@jwt_required()
+@admin_required
+def admin_list_announcements():
+    from ..models.announcement import Announcement
+    items = Announcement.query.order_by(Announcement.created_at.desc()).all()
+    return ok(announcements=[a.to_dict() for a in items])
+
+
+@admin_bp.post("/announcements")
+@jwt_required()
+@admin_required
+def admin_create_announcement():
+    from ..models.announcement import Announcement
+    d = request.get_json() or {}
+    title = (d.get("title") or "").strip()
+    message = (d.get("message") or "").strip()
+    type_ = (d.get("type") or "info").strip()
+    if not title:
+        return err("Title is required")
+    if not message:
+        return err("Message is required")
+    if type_ not in ("info", "success", "warning", "critical"):
+        return err("Type must be one of: info, success, warning, critical")
+    a = Announcement(
+        title=title[:120],
+        message=message,
+        type=type_,
+        is_active=bool(d.get("is_active", True)),
+    )
+    db.session.add(a)
+    db.session.commit()
+    return ok(announcement=a.to_dict()), 201
+
+
+@admin_bp.put("/announcements/<int:ann_id>")
+@jwt_required()
+@admin_required
+def admin_update_announcement(ann_id: int):
+    from ..models.announcement import Announcement
+    a = Announcement.query.get_or_404(ann_id)
+    d = request.get_json() or {}
+    if "title" in d:
+        title = (d.get("title") or "").strip()
+        if not title:
+            return err("Title cannot be empty")
+        a.title = title[:120]
+    if "message" in d:
+        message = (d.get("message") or "").strip()
+        if not message:
+            return err("Message cannot be empty")
+        a.message = message
+    if "type" in d:
+        type_ = (d.get("type") or "info").strip()
+        if type_ not in ("info", "success", "warning", "critical"):
+            return err("Type must be one of: info, success, warning, critical")
+        a.type = type_
+    if "is_active" in d:
+        a.is_active = bool(d["is_active"])
+    db.session.commit()
+    return ok(announcement=a.to_dict())
+
+
+@admin_bp.delete("/announcements/<int:ann_id>")
+@jwt_required()
+@admin_required
+def admin_delete_announcement(ann_id: int):
+    from ..models.announcement import Announcement
+    a = Announcement.query.get_or_404(ann_id)
+    db.session.delete(a)
+    db.session.commit()
+    return ok(deleted=True, id=ann_id)

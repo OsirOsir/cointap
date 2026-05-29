@@ -34,3 +34,17 @@ def public_settings():
         "maintenance_mode": s.maintenance_mode,
         "maintenance_message": s.maintenance_message,
     })
+
+
+@public_settings_bp.get("/announcements/active")
+def public_active_announcements():
+    """Return active announcements ordered newest-first. Used by user Dashboard."""
+    from ..models.announcement import Announcement
+    items = (
+        Announcement.query
+        .filter_by(is_active=True)
+        .order_by(Announcement.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    return ok(announcements=[a.to_dict() for a in items])

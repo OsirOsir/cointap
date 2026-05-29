@@ -1661,59 +1661,225 @@ function AnalyticsTab() {
 
 // ─── ANNOUNCEMENTS ────────────────────────────────────────
 function AnnouncementsTab() {
-  const announcements = useStore((s) => s.announcements)
-  const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState<{ title: string; message: string; type: Announcement['type']; is_active: boolean }>({
-    title: '', message: '', type: 'info', is_active: true,
-  })
+  const [announcements, setAnnouncements] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [editor, setEditor] = useState<any | null>(null)  // null = closed; {} = new; {id,...} = edit
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [toast, setToast] = useState('')
 
-  function submit() {
-    if (!form.title || !form.message) return
-    store.adminAddAnnouncement(form)
-    setForm({ title: '', message: '', type: 'info', is_active: true })
-    setCreating(false)
+  async function load() {
+    setLoading(true); setError('')
+    try {
+      const data = await adminApi.listAnnouncements()
+      setAnnouncements(data.announcements || [])
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load announcements')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const typeColors = {
+  useEffect(() => { load() }, [])
+
+  function flash(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function toggleActive(a: any) {
+    setBusyId(a.id)
+    try {
+      await adminApi.updateAnnouncement(a.id, { is_active: !a.is_active })
+      flash(a.is_active ? 'Hidden from users' : 'Now live to users')
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Update failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(a: any) {
+    if (!confirm(`Delete announcement "${a.title}"?`)) return
+    setBusyId(a.id)
+    try {
+      await adminApi.deleteAnnouncement(a.id)
+      flash('Announcement deleted')
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Delete failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const typeColors: Record<string, { bg: string; color: string; border: string }> = {
     info: { bg: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'rgba(56,189,248,0.3)' },
     success: { bg: 'rgba(74,222,128,0.15)', color: '#4ade80', border: 'rgba(74,222,128,0.3)' },
     warning: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: 'rgba(251,191,36,0.3)' },
     critical: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
   }
 
+  if (loading && announcements.length === 0) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={load} />
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-white">Active Announcements</h3>
-        <button onClick={() => setCreating(!creating)}
-          className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
-          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-          <Plus className="w-4 h-4" /> {creating ? 'Cancel' : 'New Post'}
-        </button>
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <h3 className="text-lg font-bold text-white">Announcements ({announcements.length})</h3>
+        <div className="flex gap-2">
+          <button onClick={load} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+          <button onClick={() => setEditor({})}
+            className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            <Plus className="w-4 h-4" /> New Announcement
+          </button>
+        </div>
       </div>
 
-      {creating && (
-        <div className="glass rounded-2xl p-5 space-y-3 animate-slide-up">
+      {announcements.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Megaphone className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p style={{ color: 'var(--muted-foreground)' }}>
+            No announcements yet. Create one to display it on user dashboards.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {announcements.map((a) => {
+            const c = typeColors[a.type] || typeColors.info
+            return (
+              <div key={a.id} className="glass rounded-2xl p-4" style={{ borderLeft: `4px solid ${c.color}` }}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase"
+                        style={{ background: c.bg, color: c.color }}>{a.type}</span>
+                      <div className="text-sm font-bold text-white">{a.title}</div>
+                    </div>
+                    <p className="text-xs mt-1.5 whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)' }}>{a.message}</p>
+                    <div className="text-[10px] mt-2" style={{ color: 'var(--muted-foreground)' }}>
+                      {new Date(a.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => toggleActive(a)} disabled={busyId === a.id}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold disabled:opacity-50"
+                      style={{
+                        background: a.is_active ? 'rgba(74,222,128,0.15)' : 'rgba(136,146,164,0.15)',
+                        color: a.is_active ? '#4ade80' : 'var(--muted-foreground)',
+                      }}>
+                      {a.is_active ? 'LIVE' : 'OFF'}
+                    </button>
+                    <button onClick={() => setEditor(a)} disabled={busyId === a.id}
+                      className="p-2 rounded-lg disabled:opacity-50"
+                      style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => remove(a)} disabled={busyId === a.id}
+                      className="p-2 rounded-lg disabled:opacity-50"
+                      style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {editor && (
+        <AnnouncementEditor
+          announcement={editor.id ? editor : null}
+          typeColors={typeColors}
+          onClose={() => setEditor(null)}
+          onSaved={(msg) => { flash(msg); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function AnnouncementEditor({
+  announcement, typeColors, onClose, onSaved,
+}: {
+  announcement: any | null
+  typeColors: Record<string, { bg: string; color: string; border: string }>
+  onClose: () => void
+  onSaved: (msg: string) => void
+}) {
+  const [form, setForm] = useState({
+    title: announcement?.title || '',
+    message: announcement?.message || '',
+    type: (announcement?.type || 'info') as 'info' | 'success' | 'warning' | 'critical',
+    is_active: announcement?.is_active ?? true,
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setError('')
+    if (!form.title.trim()) { setError('Title is required'); return }
+    if (!form.message.trim()) { setError('Message is required'); return }
+    setBusy(true)
+    try {
+      if (announcement) {
+        await adminApi.updateAnnouncement(announcement.id, form)
+        onSaved('Announcement updated')
+      } else {
+        await adminApi.createAnnouncement(form)
+        onSaved('Announcement published')
+      }
+      onClose()
+    } catch (e: any) {
+      setError(e?.message || 'Save failed')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }} onClick={onClose}>
+      <div className="glass rounded-3xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white">{announcement ? 'Edit' : 'New'} Announcement</h3>
+          <button onClick={onClose} className="p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <X className="w-4 h-4 text-white" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
           <div>
             <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Title</label>
             <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="e.g. Holiday Promotion"
+              maxLength={120} placeholder="e.g. Scheduled maintenance Saturday"
               className="mt-1 w-full px-4 py-3 rounded-xl text-white"
               style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
           </div>
+
           <div>
             <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Message</label>
             <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
-              rows={3} placeholder="Your announcement message..."
+              rows={4} placeholder="What you want users to know..."
               className="mt-1 w-full px-4 py-3 rounded-xl text-white resize-none"
               style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
           </div>
+
           <div>
             <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Type</label>
-            <div className="flex gap-2 mt-1">
+            <div className="flex gap-2 mt-1 flex-wrap">
               {(['info', 'success', 'warning', 'critical'] as const).map((t) => (
                 <button key={t} onClick={() => setForm({ ...form, type: t })}
-                  className="flex-1 py-2 rounded-lg text-xs font-bold capitalize"
+                  className="flex-1 py-2 rounded-lg text-xs font-bold capitalize min-w-[70px]"
                   style={{
                     background: form.type === t ? typeColors[t].bg : 'rgba(0,0,0,0.2)',
                     color: form.type === t ? typeColors[t].color : 'var(--muted-foreground)',
@@ -1724,51 +1890,27 @@ function AnnouncementsTab() {
               ))}
             </div>
           </div>
-          <button onClick={submit}
-            className="w-full py-3 rounded-xl font-bold glow-gold"
+
+          <label className="flex items-center gap-2 text-sm text-white cursor-pointer pt-2">
+            <input type="checkbox" checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+              className="w-4 h-4" />
+            Active (shown to users immediately)
+          </label>
+
+          {error && (
+            <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <button onClick={submit} disabled={busy}
+            className="w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-60"
             style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-            Publish Announcement
+            {busy ? 'Saving…' : announcement ? 'Save Changes' : 'Publish Announcement'}
           </button>
         </div>
-      )}
-
-      <div className="space-y-2">
-        {announcements.length === 0 ? (
-          <div className="glass rounded-2xl p-12 text-center">
-            <Megaphone className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p style={{ color: 'var(--muted-foreground)' }}>No announcements yet</p>
-          </div>
-        ) : announcements.map((a) => {
-          const c = typeColors[a.type]
-          return (
-            <div key={a.id} className="glass rounded-2xl p-4" style={{ borderLeft: `4px solid ${c.color}` }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase"
-                      style={{ background: c.bg, color: c.color }}>{a.type}</span>
-                    <div className="text-sm font-bold text-white">{a.title}</div>
-                  </div>
-                  <p className="text-xs mt-1.5" style={{ color: 'var(--muted-foreground)' }}>{a.message}</p>
-                  <div className="text-[10px] mt-2" style={{ color: 'var(--muted-foreground)' }}>
-                    {new Date(a.created_at).toLocaleString()}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => store.adminToggleAnnouncement(a.id)}
-                    className="px-2 py-1 rounded-lg text-[10px] font-bold"
-                    style={{ background: a.is_active ? 'rgba(74,222,128,0.15)' : 'rgba(136,146,164,0.15)', color: a.is_active ? '#4ade80' : 'var(--muted-foreground)' }}>
-                    {a.is_active ? 'LIVE' : 'OFF'}
-                  </button>
-                  <button onClick={() => store.adminDeleteAnnouncement(a.id)}
-                    className="p-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
       </div>
     </div>
   )

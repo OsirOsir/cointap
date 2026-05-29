@@ -277,11 +277,21 @@ export const adminApi = {
   releaseBatch: () => http.post('/admin/pool/release-batch'),
   getSettings: () => http.get('/admin/settings'),
   updateSettings: (settings: any) => http.put('/admin/settings', settings),
+  listAnnouncements: () => http.get('/admin/announcements'),
+  createAnnouncement: (a: { title: string; message: string; type: string; is_active: boolean }) =>
+    http.post('/admin/announcements', a),
+  updateAnnouncement: (id: number, a: any) => http.put(`/admin/announcements/${id}`, a),
+  deleteAnnouncement: (id: number) => http.del(`/admin/announcements/${id}`),
 }
 
 // Public settings — no auth, used to check maintenance mode globally
 export const settingsApi = {
   get: () => fetch('/api/settings').then((r) => r.json()),
+}
+
+// Public active announcements — used by user Dashboard
+export const announcementsApi = {
+  active: () => fetch('/api/announcements/active').then((r) => r.json()),
 }
 
 export { ApiError }
