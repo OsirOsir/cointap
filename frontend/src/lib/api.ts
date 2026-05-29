@@ -144,9 +144,15 @@ export const authApi = {
     return data.user
   },
 
-  async updateProfile(input: { full_name?: string; phone?: string; password?: string }) {
+  async updateProfile(input: { full_name?: string; email?: string; phone?: string }) {
     const data = await http.put<{ ok: boolean; user: ApiUser }>('/auth/me', input)
     return data.user
+  },
+
+  async changePassword(current_password: string, new_password: string) {
+    return http.post<{ ok: boolean; message: string }>('/auth/change-password', {
+      current_password, new_password,
+    })
   },
 
   logout() {
@@ -250,8 +256,12 @@ export function normalizeWallet(w: any) {
 export const adminApi = {
   dashboard: () => http.get('/admin/dashboard'),
   users: (page = 1, q = '') => http.get(`/admin/users?page=${page}&q=${encodeURIComponent(q)}`),
+  userDetail: (userId: number) => http.get(`/admin/users/${userId}`),
   adjustWallet: (userId: number, amount: number, description: string) =>
     http.put(`/admin/users/${userId}/wallet`, { amount, description }),
+  suspendUser: (userId: number, active?: boolean) =>
+    http.put(`/admin/users/${userId}/suspend`, active !== undefined ? { active } : {}),
+  deleteUser: (userId: number) => http.del(`/admin/users/${userId}`),
   orders: (status = '') => http.get(`/admin/orders${status ? `?status=${status}` : ''}`),
   forceMature: (orderId: number) => http.put(`/admin/orders/${orderId}/force-mature`),
   withdrawals: (status = '') => http.get(`/admin/withdrawals${status ? `?status=${status}` : ''}`),
@@ -259,6 +269,7 @@ export const adminApi = {
   rejectWithdrawal: (id: number, reason = '') => http.put(`/admin/withdrawals/${id}/reject`, { reason }),
   createPlan: (plan: any) => http.post('/admin/plans', plan),
   updatePlan: (id: number, plan: any) => http.put(`/admin/plans/${id}`, plan),
+  deletePlan: (id: number) => http.del(`/admin/plans/${id}`),
   updatePool: (pool: any) => http.put('/admin/pool', pool),
   releaseBatch: () => http.post('/admin/pool/release-batch'),
 }

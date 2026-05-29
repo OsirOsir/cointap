@@ -388,17 +388,32 @@ export const store = {
     }
   },
 
-  /** Update profile via the backend. */
-  async apiUpdateProfile(input: { full_name?: string; phone?: string; password?: string }): Promise<{ ok: boolean; error?: string }> {
+  /** Update profile via the backend. Returns updated user or an error. */
+  async apiUpdateProfile(input: { full_name?: string; email?: string; phone?: string }): Promise<{ ok: boolean; error?: string }> {
     try {
       const apiUser = await authApi.updateProfile(input)
       set((s) => s.user ? {
         ...s,
-        user: { ...s.user, full_name: apiUser.full_name, phone: apiUser.phone },
+        user: {
+          ...s.user,
+          full_name: apiUser.full_name,
+          email: apiUser.email,
+          phone: apiUser.phone,
+        },
       } : s)
       return { ok: true }
     } catch (e: any) {
       return { ok: false, error: e?.message || 'Update failed' }
+    }
+  },
+
+  /** Change password — server verifies the current password. */
+  async apiChangePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await authApi.changePassword(currentPassword, newPassword)
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Could not update password' }
     }
   },
 

@@ -267,13 +267,14 @@ function PersonalInfoSection() {
   })
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const dirty =
     form.full_name !== user.full_name ||
     form.email !== user.email ||
     form.phone !== user.phone
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     setStatus(null)
 
@@ -290,11 +291,18 @@ function PersonalInfoSection() {
       return
     }
 
-    store.updateProfile({
+    setBusy(true)
+    const res = await store.apiUpdateProfile({
       full_name: form.full_name.trim(),
       email: form.email.toLowerCase().trim(),
       phone: form.phone.trim(),
     })
+    setBusy(false)
+
+    if (!res.ok) {
+      setStatus({ type: 'error', message: res.error || 'Update failed' })
+      return
+    }
     setEditing(false)
     setStatus({ type: 'success', message: 'Profile updated successfully' })
     setTimeout(() => setStatus(null), 3000)
@@ -355,10 +363,10 @@ function PersonalInfoSection() {
 
         {editing && (
           <div className="flex gap-2 pt-2">
-            <button type="submit" disabled={!dirty}
+            <button type="submit" disabled={!dirty || busy}
               className="flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 glow-gold disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-              <Save className="w-4 h-4" /> Save Changes
+              <Save className="w-4 h-4" /> {busy ? 'Saving…' : 'Save Changes'}
             </button>
             <button type="button" onClick={cancel}
               className="px-6 py-3 rounded-xl font-bold"
@@ -378,8 +386,9 @@ function SecuritySection() {
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     setStatus(null)
     if (!current) {
@@ -395,7 +404,11 @@ function SecuritySection() {
       setStatus({ type: 'error', message: `Password is "${label}". Please choose a stronger one.` })
       return
     }
-    const res = store.changePassword(current, next)
+
+    setBusy(true)
+    const res = await store.apiChangePassword(current, next)
+    setBusy(false)
+
     if (!res.ok) {
       setStatus({ type: 'error', message: res.error || 'Could not update password' })
       return
@@ -446,10 +459,10 @@ function SecuritySection() {
           </div>
         )}
 
-        <button type="submit"
-          className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+        <button type="submit" disabled={busy}
+          className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
           style={{ background: 'rgba(247,147,26,0.15)', color: 'var(--primary)', border: '1px solid rgba(247,147,26,0.3)' }}>
-          <Lock className="w-4 h-4" /> Update Password
+          <Lock className="w-4 h-4" /> {busy ? 'Updating…' : 'Update Password'}
         </button>
       </form>
     </div>

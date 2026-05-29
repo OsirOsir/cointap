@@ -228,6 +228,9 @@ function UsersTab() {
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<any | null>(null)
+  const [viewing, setViewing] = useState<any | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [toast, setToast] = useState('')
 
   async function load() {
     setLoading(true)
@@ -250,11 +253,47 @@ function UsersTab() {
     return () => clearTimeout(t)
   }, [query])
 
+  function flash(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function toggleSuspend(u: any) {
+    setBusyId(u.id)
+    try {
+      const res = await adminApi.suspendUser(u.id)
+      flash(res.suspended ? `${u.full_name} suspended` : `${u.full_name} unsuspended`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Action failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(u: any) {
+    if (!confirm(`PERMANENTLY DELETE ${u.full_name} (${u.email})?\n\nThis cannot be undone. If they have active orders or pending withdrawals, deletion will be blocked.`)) return
+    setBusyId(u.id)
+    try {
+      await adminApi.deleteUser(u.id)
+      flash(`${u.full_name} deleted`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Delete failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (loading && users.length === 0) return <LoadingState />
   if (error) return <ErrorState message={error} onRetry={load} />
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
       <div className="glass rounded-2xl p-4 flex items-center gap-3">
         <Search className="w-5 h-5" style={{ color: 'var(--muted-foreground)' }} />
         <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
@@ -278,16 +317,19 @@ function UsersTab() {
         <div className="space-y-2">
           {users.map((u) => {
             const wallet = u.wallet || {}
+            const refCount = u.referral_count ?? 0
+            const activeRefs = u.active_referral_count ?? 0
             return (
-              <div key={u.id} className="glass rounded-2xl p-4 hover:scale-[1.01] transition-transform">
+              <div key={u.id} className="glass rounded-2xl p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white"
+                    <button onClick={() => setViewing(u)}
+                      className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-white hover:scale-110 transition-transform"
                       style={{ background: 'var(--gradient-gold)' }}>
                       {u.full_name.split(' ').map((p: string) => p[0]).slice(0, 2).join('')}
-                    </div>
+                    </button>
                     <div>
-                      <div className="font-semibold text-white flex items-center gap-2">
+                      <div className="font-semibold text-white flex items-center gap-2 flex-wrap">
                         {u.full_name}
                         {u.role === 'admin' && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(247,147,26,0.2)', color: 'var(--primary)' }}>
@@ -319,14 +361,43 @@ function UsersTab() {
                       <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Orders</div>
                       <div className="font-mono font-bold text-white">{u.order_count ?? 0}</div>
                     </div>
+                    <div className="text-right">
+                      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Refs</div>
+                      <div className="font-mono font-bold text-white">
+                        {refCount} <span className="text-[10px] text-green-400">({activeRefs} active)</span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setEditing(u)}
-                      className="p-2 rounded-lg hover:opacity-80" title="Adjust wallet"
+                    <button onClick={() => setViewing(u)} disabled={busyId === u.id}
+                      className="p-2 rounded-lg hover:opacity-80 disabled:opacity-50" title="View details"
+                      style={{ background: 'rgba(56,189,248,0.1)', color: '#38bdf8' }}>
+                      <Search className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setEditing(u)} disabled={busyId === u.id}
+                      className="p-2 rounded-lg hover:opacity-80 disabled:opacity-50" title="Adjust wallet"
                       style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
                       <Edit2 className="w-4 h-4" />
                     </button>
+                    {u.role !== 'admin' && (
+                      <>
+                        <button onClick={() => toggleSuspend(u)} disabled={busyId === u.id}
+                          className="p-2 rounded-lg hover:opacity-80 disabled:opacity-50"
+                          title={u.is_active ? 'Suspend (blacklist)' : 'Unsuspend'}
+                          style={{
+                            background: u.is_active ? 'rgba(251,191,36,0.1)' : 'rgba(74,222,128,0.1)',
+                            color: u.is_active ? '#fbbf24' : '#4ade80',
+                          }}>
+                          {u.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                        </button>
+                        <button onClick={() => remove(u)} disabled={busyId === u.id}
+                          className="p-2 rounded-lg hover:opacity-80 disabled:opacity-50" title="Delete user"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -336,6 +407,120 @@ function UsersTab() {
       )}
 
       {editing && <WalletAdjustModal user={editing} onClose={() => { setEditing(null); load() }} />}
+      {viewing && <UserDetailModal userId={viewing.id} onClose={() => setViewing(null)} />}
+    </div>
+  )
+}
+
+function UserDetailModal({ userId, onClose }: { userId: number; onClose: () => void }) {
+  const [user, setUser] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await adminApi.userDetail(userId)
+        setUser(data.user)
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load user')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [userId])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }} onClick={onClose}>
+      <div className="glass rounded-3xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white">User Details</h3>
+          <button onClick={onClose} className="p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <X className="w-4 h-4 text-white" />
+          </button>
+        </div>
+
+        {loading && <LoadingState />}
+        {error && <ErrorState message={error} onRetry={() => {}} />}
+
+        {user && (
+          <div className="space-y-4">
+            {/* Identity */}
+            <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)' }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white"
+                style={{ background: 'var(--gradient-gold)' }}>
+                {user.full_name.split(' ').map((p: string) => p[0]).slice(0, 2).join('')}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-white">{user.full_name}</div>
+                <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{user.email}</div>
+                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{user.phone}</div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <Stat label="Wallet Balance" value={formatKsh(Number(user.wallet?.balance ?? 0))} />
+              <Stat label="Total Deposited" value={formatKsh(Number(user.wallet?.total_deposited ?? 0))} />
+              <Stat label="Total Earned" value={formatKsh(Number(user.wallet?.total_earned ?? 0))} />
+              <Stat label="Total Withdrawn" value={formatKsh(Number(user.wallet?.total_withdrawn ?? 0))} />
+              <Stat label="Orders" value={String(user.order_count ?? 0)} />
+              <Stat label="Referral Code" value={user.referral_code || '—'} />
+            </div>
+
+            {/* Referrals */}
+            <div>
+              <h4 className="font-bold text-white mb-2 flex items-center gap-2">
+                <Users className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                Referrals ({user.referral_count})
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto"
+                  style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
+                  {user.active_referral_count} ACTIVE
+                </span>
+              </h4>
+              {user.referrals && user.referrals.length > 0 ? (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {user.referrals.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between p-2 rounded-lg text-xs"
+                      style={{ background: 'rgba(0,0,0,0.3)' }}>
+                      <div>
+                        <div className="text-white font-semibold">{r.referred_name}</div>
+                        <div style={{ color: 'var(--muted-foreground)' }}>{r.referred_email}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase"
+                          style={{
+                            background: r.status === 'credited' ? 'rgba(74,222,128,0.15)' : 'rgba(251,191,36,0.15)',
+                            color: r.status === 'credited' ? '#4ade80' : '#fbbf24',
+                          }}>
+                          {r.status}
+                        </span>
+                        {r.bonus_amount > 0 && (
+                          <div className="font-mono text-green-400 mt-0.5">+{formatKsh(r.bonus_amount)}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-center py-4" style={{ color: 'var(--muted-foreground)' }}>
+                  This user hasn't referred anyone yet.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="p-2.5 rounded-lg" style={{ background: 'rgba(0,0,0,0.3)' }}>
+      <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>{label}</div>
+      <div className="font-mono font-bold text-white text-sm mt-0.5">{value}</div>
     </div>
   )
 }
@@ -433,98 +618,195 @@ function WalletAdjustModal({ user, onClose }: { user: any; onClose: () => void }
 
 // ─── PLANS MANAGEMENT ─────────────────────────────────────
 function PlansTab() {
-  const plans = useStore((s) => s.plans)
-  const [editing, setEditing] = useState<Plan | null>(null)
+  const [plans, setPlans] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [editing, setEditing] = useState<any | null>(null)
   const [creating, setCreating] = useState(false)
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [toast, setToast] = useState('')
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await fetch('/api/plans/', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('cointap_access')}` },
+      }).then((r) => r.json())
+      setPlans(data.plans || [])
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load plans')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  function flash(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
+
+  async function toggleActive(p: any) {
+    setBusyId(p.id)
+    try {
+      await adminApi.updatePlan(p.id, { is_active: !p.is_active })
+      flash(`Plan ${p.is_active ? 'disabled' : 'enabled'}`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Update failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(p: any) {
+    if (!confirm(`Permanently delete "${p.name}"?\n\nIf any active orders use this plan, deletion will be blocked — disable it instead.`)) return
+    setBusyId(p.id)
+    try {
+      await adminApi.deletePlan(p.id)
+      flash(`Plan "${p.name}" deleted`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Delete failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (loading && plans.length === 0) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={load} />
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-bold text-white">All Plans ({plans.length})</h3>
-        <button onClick={() => setCreating(true)}
-          className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
-          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-          <Plus className="w-4 h-4" /> New Plan
-        </button>
+        <div className="flex gap-2">
+          <button onClick={load} className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+          <button onClick={() => setCreating(true)}
+            className="px-4 py-2 rounded-xl font-semibold flex items-center gap-2 glow-gold"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            <Plus className="w-4 h-4" /> New Plan
+          </button>
+        </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {plans.map((p) => (
-          <div key={p.id} className="glass rounded-2xl p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <div className="text-sm font-bold text-white">{p.name}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                  ID: {p.id}
+      {plans.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center">
+          <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p style={{ color: 'var(--muted-foreground)' }}>No plans yet. Create one to get started.</p>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {plans.map((p) => (
+            <div key={p.id} className="glass rounded-2xl p-5">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-sm font-bold text-white">{p.name}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                    ID: {p.id}
+                  </div>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${p.is_active ? 'text-green-400' : 'text-red-400'}`}
+                  style={{ background: p.is_active ? 'rgba(74,222,128,0.15)' : 'rgba(239,68,68,0.15)' }}>
+                  {p.is_active ? 'ACTIVE' : 'INACTIVE'}
+                </span>
+              </div>
+
+              <div className="text-3xl font-bold text-gradient-gold font-mono">{Number(p.profit_percent)}%</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                in {p.duration_days} days
+              </div>
+
+              <div className="mt-4 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--muted-foreground)' }}>Min</span>
+                  <span className="font-mono text-white">{formatKsh(Number(p.min_amount))}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--muted-foreground)' }}>Max</span>
+                  <span className="font-mono text-white">{formatKsh(Number(p.max_amount))}</span>
                 </div>
               </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${p.is_active ? 'text-green-400' : 'text-red-400'}`}
-                style={{ background: p.is_active ? 'rgba(74,222,128,0.15)' : 'rgba(239,68,68,0.15)' }}>
-                {p.is_active ? 'ACTIVE' : 'INACTIVE'}
-              </span>
-            </div>
 
-            <div className="text-3xl font-bold text-gradient-gold font-mono">{p.profit_percent}%</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
-              in {p.duration_days} days
-            </div>
-
-            <div className="mt-4 space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--muted-foreground)' }}>Min</span>
-                <span className="font-mono text-white">{formatKsh(p.min_amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: 'var(--muted-foreground)' }}>Max</span>
-                <span className="font-mono text-white">{formatKsh(p.max_amount)}</span>
+              <div className="mt-4 flex gap-2">
+                <button onClick={() => setEditing(p)} disabled={busyId === p.id}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
+                  style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+                  Edit
+                </button>
+                <button onClick={() => toggleActive(p)} disabled={busyId === p.id}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
+                  style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed' }}>
+                  {p.is_active ? 'Disable' : 'Enable'}
+                </button>
+                <button onClick={() => remove(p)} disabled={busyId === p.id}
+                  className="p-2 rounded-lg disabled:opacity-50"
+                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
-
-            <div className="mt-4 flex gap-2">
-              <button onClick={() => setEditing(p)}
-                className="flex-1 py-2 rounded-lg text-xs font-semibold"
-                style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
-                Edit
-              </button>
-              <button onClick={() => store.adminUpdatePlan(p.id, { is_active: !p.is_active })}
-                className="flex-1 py-2 rounded-lg text-xs font-semibold"
-                style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed' }}>
-                {p.is_active ? 'Disable' : 'Enable'}
-              </button>
-              <button onClick={() => { if (confirm(`Delete ${p.name}?`)) store.adminDeletePlan(p.id) }}
-                className="p-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {(editing || creating) && (
-        <PlanEditModal plan={editing} onClose={() => { setEditing(null); setCreating(false) }} />
+        <PlanEditModal
+          plan={editing}
+          onClose={() => { setEditing(null); setCreating(false) }}
+          onSaved={(msg) => { flash(msg); load() }}
+        />
       )}
     </div>
   )
 }
 
-function PlanEditModal({ plan, onClose }: { plan: Plan | null; onClose: () => void }) {
+function PlanEditModal({ plan, onClose, onSaved }: { plan: any | null; onClose: () => void; onSaved: (msg: string) => void }) {
   const [form, setForm] = useState({
     name: plan?.name || '',
-    duration_days: plan?.duration_days || 7,
-    profit_percent: plan?.profit_percent || 25,
-    min_amount: plan?.min_amount || 500,
-    max_amount: plan?.max_amount || 50000,
+    duration_days: Number(plan?.duration_days || 7),
+    profit_percent: Number(plan?.profit_percent || 25),
+    min_amount: Number(plan?.min_amount || 500),
+    max_amount: Number(plan?.max_amount || 50000),
     is_active: plan?.is_active ?? true,
   })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  function submit() {
-    if (!form.name) return
-    if (plan) {
-      store.adminUpdatePlan(plan.id, form)
-    } else {
-      store.adminAddPlan(form)
+  async function submit() {
+    setError('')
+    if (!form.name.trim()) { setError('Plan name is required'); return }
+    if (form.duration_days < 1) { setError('Duration must be at least 1 day'); return }
+    if (form.profit_percent <= 0) { setError('Profit percent must be greater than 0'); return }
+    if (form.min_amount < 0 || form.max_amount < 0) { setError('Amounts cannot be negative'); return }
+    if (form.min_amount > form.max_amount) { setError('Min amount cannot exceed max amount'); return }
+
+    setBusy(true)
+    try {
+      if (plan) {
+        await adminApi.updatePlan(plan.id, form)
+        onSaved(`Plan "${form.name}" updated`)
+      } else {
+        await adminApi.createPlan(form)
+        onSaved(`Plan "${form.name}" created`)
+      }
+      onClose()
+    } catch (e: any) {
+      setError(e?.message || 'Save failed')
+      setBusy(false)
     }
-    onClose()
   }
 
   return (
@@ -564,10 +846,17 @@ function PlanEditModal({ plan, onClose }: { plan: Plan | null; onClose: () => vo
             Active (visible to users)
           </label>
 
-          <button onClick={submit}
-            className="w-full py-3 rounded-xl font-bold glow-gold"
+          {error && (
+            <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444' }}>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <button onClick={submit} disabled={busy}
+            className="w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-60"
             style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-            {plan ? 'Save Changes' : 'Create Plan'}
+            {busy ? 'Saving…' : plan ? 'Save Changes' : 'Create Plan'}
           </button>
         </div>
       </div>
@@ -577,29 +866,115 @@ function PlanEditModal({ plan, onClose }: { plan: Plan | null; onClose: () => vo
 
 // ─── POOL MANAGEMENT ──────────────────────────────────────
 function PoolTab() {
-  const pool = useStore((s) => s.pool)
-  const [injectAmount, setInjectAmount] = useState('100000')
+  const [pool, setPool] = useState<any | null>(null)
+  const [draft, setDraft] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [releasing, setReleasing] = useState(false)
+  const [toast, setToast] = useState('')
 
-  const inject = (target: 'public' | 'reserve') => {
-    const a = parseFloat(injectAmount) || 0
-    if (a > 0) store.adminInjectFunds(a, target)
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await fetch('/api/pool/status', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('cointap_access')}` },
+      }).then((r) => r.json())
+      const p = data.pool || data
+      setPool(p)
+      setDraft({
+        public_pool_balance: Number(p.public_pool_balance || 0),
+        reserve_pool_balance: Number(p.reserve_pool_balance || 0),
+        sold_out_floor: Number(p.sold_out_floor || 0),
+        batch_release_amount: Number(p.batch_release_amount || 0),
+        auto_replenish_enabled: !!p.auto_replenish_enabled,
+      })
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load pool')
+    } finally {
+      setLoading(false)
+    }
   }
 
+  useEffect(() => { load() }, [])
+
+  function flash(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
+
+  function set(key: string, value: any) {
+    setDraft({ ...draft, [key]: value })
+  }
+
+  async function inject(target: 'public' | 'reserve', amount: number) {
+    if (!amount || amount <= 0) return
+    const key = target === 'public' ? 'public_pool_balance' : 'reserve_pool_balance'
+    setSaving(true)
+    try {
+      const newVal = Number(pool[key] || 0) + amount
+      await adminApi.updatePool({ [key]: newVal })
+      flash(`Injected ${formatKsh(amount)} into ${target} pool`)
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Inject failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveAll() {
+    if (!draft) return
+    setSaving(true)
+    try {
+      await adminApi.updatePool(draft)
+      flash('Pool settings saved')
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function releaseBatch() {
+    setReleasing(true)
+    try {
+      await adminApi.releaseBatch()
+      flash('Batch released from reserve → public')
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Release failed')
+    } finally {
+      setReleasing(false)
+    }
+  }
+
+  if (loading && !pool) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={load} />
+  if (!pool || !draft) return null
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
+      {/* Live balances */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="glass rounded-2xl p-6 relative overflow-hidden">
           <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-gold opacity-10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
-              Public Pool
+              Public Pool (live)
             </div>
-            <div className="text-3xl font-bold text-gradient-gold font-mono mt-2">{formatKsh(pool.public_pool_balance)}</div>
-            <button onClick={() => inject('public')}
-              className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold"
-              style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-              + Inject to Public
-            </button>
+            <div className="text-3xl font-bold text-gradient-gold font-mono mt-2">
+              {formatKsh(Number(pool.public_pool_balance))}
+            </div>
           </div>
         </div>
 
@@ -607,62 +982,122 @@ function PoolTab() {
           <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-purple opacity-10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
-              Reserve Pool
+              Reserve Pool (live)
             </div>
-            <div className="text-3xl font-bold font-mono text-white mt-2">{formatKsh(pool.reserve_pool_balance)}</div>
-            <button onClick={() => inject('reserve')}
-              className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold"
-              style={{ background: 'rgba(124,58,237,0.2)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.4)' }}>
-              + Inject to Reserve
-            </button>
+            <div className="text-3xl font-bold font-mono text-white mt-2">
+              {formatKsh(Number(pool.reserve_pool_balance))}
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Editable form */}
       <div className="glass rounded-2xl p-5">
-        <label className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
-          Inject Amount (Ksh)
-        </label>
-        <input type="number" value={injectAmount} onChange={(e) => setInjectAmount(e.target.value)}
-          className="mt-2 w-full px-4 py-3 rounded-xl text-white font-mono text-lg font-bold"
-          style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(247,147,26,0.2)' }} />
-        <div className="flex gap-2 mt-3">
-          {[100000, 500000, 1000000, 5000000].map((v) => (
-            <button key={v} onClick={() => setInjectAmount(String(v))}
-              className="flex-1 py-2 rounded-lg text-xs font-semibold"
-              style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
-              {(v / 1000)}K
-            </button>
-          ))}
-        </div>
-      </div>
+        <h3 className="font-bold text-white mb-4 flex items-center justify-between">
+          <span>Pool Settings</span>
+          <button onClick={load} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+        </h3>
 
-      <div className="glass rounded-2xl p-5">
-        <h3 className="font-bold text-white mb-4">Pool Configuration</h3>
         <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Public Pool Balance
+            </label>
+            <input type="number" value={draft.public_pool_balance}
+              onChange={(e) => set('public_pool_balance', parseFloat(e.target.value) || 0)}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+              Reserve Pool Balance
+            </label>
+            <input type="number" value={draft.reserve_pool_balance}
+              onChange={(e) => set('reserve_pool_balance', parseFloat(e.target.value) || 0)}
+              className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
+              style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
           <div>
             <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
               Sold-Out Floor
             </label>
-            <input type="number" value={pool.sold_out_floor}
-              onChange={(e) => store.adminUpdatePool({ sold_out_floor: parseFloat(e.target.value) || 0 })}
+            <input type="number" value={draft.sold_out_floor}
+              onChange={(e) => set('sold_out_floor', parseFloat(e.target.value) || 0)}
               className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
               style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
           </div>
           <div>
             <label className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
-              Batch Size
+              Batch Release Amount
             </label>
-            <input type="number" value={pool.batch_size}
-              onChange={(e) => store.adminUpdatePool({ batch_size: parseFloat(e.target.value) || 0 })}
+            <input type="number" value={draft.batch_release_amount}
+              onChange={(e) => set('batch_release_amount', parseFloat(e.target.value) || 0)}
               className="mt-1 w-full px-4 py-3 rounded-xl text-white font-mono"
               style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.1)' }} />
           </div>
         </div>
-        <button onClick={() => store.adminReleaseBatch()}
-          className="mt-4 w-full py-3 rounded-xl font-bold glow-gold"
+
+        <label className="flex items-center gap-2 mt-4 text-sm text-white cursor-pointer">
+          <input type="checkbox" checked={draft.auto_replenish_enabled}
+            onChange={(e) => set('auto_replenish_enabled', e.target.checked)}
+            className="w-4 h-4" />
+          Auto-replenish enabled (scheduler releases batches automatically)
+        </label>
+
+        <button onClick={saveAll} disabled={saving}
+          className="mt-5 w-full py-3 rounded-xl font-bold glow-gold disabled:opacity-60"
           style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-          Release Batch ({formatKsh(pool.batch_size)})
+          {saving ? 'Saving…' : 'Save Pool Settings'}
+        </button>
+      </div>
+
+      {/* Inject + Release actions */}
+      <PoolInjectControls onInject={inject} saving={saving} />
+
+      <button onClick={releaseBatch} disabled={releasing}
+        className="w-full py-3 rounded-xl font-bold disabled:opacity-60"
+        style={{ background: 'rgba(124,58,237,0.15)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.3)' }}>
+        {releasing ? 'Releasing…' : `Release Batch from Reserve → Public (${formatKsh(Number(pool.batch_release_amount || 0))})`}
+      </button>
+    </div>
+  )
+}
+
+function PoolInjectControls({ onInject, saving }: { onInject: (target: 'public' | 'reserve', amount: number) => void; saving: boolean }) {
+  const [injectAmount, setInjectAmount] = useState('100000')
+  const a = parseFloat(injectAmount) || 0
+
+  return (
+    <div className="glass rounded-2xl p-5">
+      <h3 className="font-bold text-white mb-3">Quick Inject Funds</h3>
+      <label className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+        Amount (Ksh)
+      </label>
+      <input type="number" value={injectAmount} onChange={(e) => setInjectAmount(e.target.value)}
+        className="mt-2 w-full px-4 py-3 rounded-xl text-white font-mono text-lg font-bold"
+        style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(247,147,26,0.2)' }} />
+      <div className="flex gap-2 mt-3">
+        {[100000, 500000, 1000000, 5000000].map((v) => (
+          <button key={v} onClick={() => setInjectAmount(String(v))}
+            className="flex-1 py-2 rounded-lg text-xs font-semibold"
+            style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+            {(v / 1000)}K
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-4">
+        <button onClick={() => onInject('public', a)} disabled={saving || a <= 0}
+          className="py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
+          style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+          + Inject to Public
+        </button>
+        <button onClick={() => onInject('reserve', a)} disabled={saving || a <= 0}
+          className="py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
+          style={{ background: 'rgba(124,58,237,0.2)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.4)' }}>
+          + Inject to Reserve
         </button>
       </div>
     </div>
@@ -722,66 +1157,162 @@ function OrdersTab() {
 
 // ─── WITHDRAWALS ──────────────────────────────────────────
 function WithdrawalsTab() {
-  const withdrawals = useStore((s) => s.withdrawals)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'rejected'>('pending')
-  const filtered = filter === 'all' ? withdrawals : withdrawals.filter((w) => w.status === filter)
+  const [withdrawals, setWithdrawals] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [filter, setFilter] = useState<'Pending' | 'Paid' | 'Rejected' | ''>('Pending')
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [toast, setToast] = useState('')
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      // Backend expects capitalized status — '' means All
+      const data = await adminApi.withdrawals(filter)
+      setWithdrawals(data.withdrawals || [])
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load withdrawals')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [filter])
+
+  function flash(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function approve(w: any) {
+    if (!confirm(`Approve withdrawal of ${formatKsh(Number(w.amount))} to ${w.phone}?\n\nThis triggers M-Pesa B2C payout.`)) return
+    setBusyId(w.id)
+    try {
+      await adminApi.approveWithdrawal(w.id)
+      flash('Withdrawal approved — payout initiated')
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Approve failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function reject(w: any) {
+    const reason = prompt('Reason for rejection?', 'Insufficient verification')
+    if (reason === null) return
+    setBusyId(w.id)
+    try {
+      await adminApi.rejectWithdrawal(w.id, reason)
+      flash('Withdrawal rejected — funds returned to user wallet')
+      await load()
+    } catch (e: any) {
+      flash(e?.message || 'Reject failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const TABS: { key: typeof filter; label: string }[] = [
+    { key: 'Pending', label: 'Pending' },
+    { key: 'Paid', label: 'Paid' },
+    { key: 'Rejected', label: 'Rejected' },
+    { key: '', label: 'All' },
+  ]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white animate-slide-up"
+          style={{ background: 'rgba(247,147,26,0.95)' }}>
+          {toast}
+        </div>
+      )}
+
       <div className="glass rounded-2xl p-2 flex gap-1">
-        {(['pending', 'paid', 'rejected', 'all'] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className="flex-1 py-2 rounded-lg text-xs font-bold uppercase"
+        {TABS.map((t) => (
+          <button key={t.label} onClick={() => setFilter(t.key)}
+            className="flex-1 py-2 rounded-lg text-xs font-bold uppercase transition-all"
             style={{
-              background: filter === f ? 'var(--gradient-gold)' : 'transparent',
-              color: filter === f ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+              background: filter === t.key ? 'var(--gradient-gold)' : 'transparent',
+              color: filter === t.key ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
             }}>
-            {f}
+            {t.label}
           </button>
         ))}
+        <button onClick={load} className="px-3 rounded-lg" title="Refresh"
+          style={{ background: 'rgba(247,147,26,0.1)', color: 'var(--primary)' }}>
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading && withdrawals.length === 0 ? <LoadingState /> :
+       error ? <ErrorState message={error} onRetry={load} /> :
+       withdrawals.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center">
           <Wallet className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p style={{ color: 'var(--muted-foreground)' }}>No {filter} withdrawals</p>
+          <p style={{ color: 'var(--muted-foreground)' }}>
+            No {filter ? filter.toLowerCase() : ''} withdrawals
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((w) => (
-            <div key={w.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <div className="font-bold text-white font-mono">{formatKsh(w.amount)}</div>
-                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>To {w.phone}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase`}
-                  style={{
-                    background: w.status === 'pending' ? 'rgba(251,191,36,0.15)' :
-                      w.status === 'paid' ? 'rgba(74,222,128,0.15)' :
+          {withdrawals.map((w) => {
+            const status = String(w.status).toLowerCase()
+            return (
+              <div key={w.id} className="glass rounded-2xl p-4 flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-white font-mono text-lg">{formatKsh(Number(w.amount))}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                    <span className="font-semibold text-white">{w.user_name || `User #${w.user_id}`}</span>
+                    {w.user_email && <> · {w.user_email}</>}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    To {w.phone}
+                    {w.requested_at && <> · {new Date(w.requested_at).toLocaleString()}</>}
+                  </div>
+                  {w.admin_note && (
+                    <div className="text-xs mt-1 italic" style={{ color: '#fbbf24' }}>
+                      Note: {w.admin_note}
+                    </div>
+                  )}
+                  {w.mpesa_reference && (
+                    <div className="text-[10px] font-mono mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                      Ref: {w.mpesa_reference}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] px-2 py-1 rounded-full font-bold uppercase"
+                    style={{
+                      background:
+                        status === 'pending' ? 'rgba(251,191,36,0.15)' :
+                        status === 'processing' ? 'rgba(56,189,248,0.15)' :
+                        status === 'paid' ? 'rgba(74,222,128,0.15)' :
                         'rgba(239,68,68,0.15)',
-                    color: w.status === 'pending' ? '#fbbf24' :
-                      w.status === 'paid' ? '#4ade80' : '#ef4444',
-                  }}>
-                  {w.status}
-                </span>
-                {w.status === 'pending' && (
-                  <>
-                    <button onClick={() => store.adminApproveWithdrawal(w.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
-                      style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
-                      <Check className="w-3 h-3" /> Approve
-                    </button>
-                    <button onClick={() => store.adminRejectWithdrawal(w.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
-                      style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
-                      <X className="w-3 h-3" /> Reject
-                    </button>
-                  </>
-                )}
+                      color:
+                        status === 'pending' ? '#fbbf24' :
+                        status === 'processing' ? '#38bdf8' :
+                        status === 'paid' ? '#4ade80' : '#ef4444',
+                    }}>
+                    {w.status}
+                  </span>
+                  {(status === 'pending' || status === 'processing') && (
+                    <>
+                      <button onClick={() => approve(w)} disabled={busyId === w.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                        style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
+                        <Check className="w-3 h-3" /> Approve
+                      </button>
+                      <button onClick={() => reject(w)} disabled={busyId === w.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-50"
+                        style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+                        <X className="w-3 h-3" /> Reject
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

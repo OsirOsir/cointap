@@ -72,8 +72,45 @@ def list_users():
         d = u.to_dict()
         d["wallet"] = u.wallet.to_dict() if u.wallet else {}
         d["order_count"] = len(u.orders)
+        # Referral counts
+        from ..models.referral import Referral
+        total_refs = Referral.query.filter_by(referrer_id=u.id).count()
+        active_refs = Referral.query.filter_by(referrer_id=u.id, status="credited").count()
+        d["referral_count"] = total_refs
+        d["active_referral_count"] = active_refs
         users.append(d)
     return ok(users=users, total=result.total, pages=result.pages)
+
+
+@admin_bp.get("/users/<int:user_id>")
+@jwt_required()
+@admin_required
+def get_user_detail(user_id: int):
+    """Full detail for one user — used by admin user-detail modal."""
+    from ..models.referral import Referral
+    user = User.query.get_or_404(user_id)
+    d = user.to_dict()
+    d["wallet"] = user.wallet.to_dict() if user.wallet else {}
+    d["order_count"] = len(user.orders)
+
+    # All referrals this user has brought in
+    refs = Referral.query.filter_by(referrer_id=user.id).all()
+    referrals = []
+    for r in refs:
+        if r.referred_user:
+            referrals.append({
+                "id": r.id,
+                "referred_user_id": r.referred_user_id,
+                "referred_name": r.referred_user.full_name,
+                "referred_email": r.referred_user.email,
+                "status": r.status,
+                "bonus_amount": float(r.bonus_amount),
+                "created_at": r.created_at.isoformat(),
+            })
+    d["referrals"] = referrals
+    d["referral_count"] = len(referrals)
+    d["active_referral_count"] = sum(1 for r in refs if r.status == "credited")
+    return ok(user=d)
 
 
 @admin_bp.put("/users/<int:user_id>/wallet")
@@ -95,6 +132,77 @@ def adjust_wallet(user_id: int):
     except ValueError as e:
         db.session.rollback()
         return err(str(e))
+
+
+@admin_bp.put("/users/<int:user_id>/suspend")
+@jwt_required()
+@admin_required
+def suspend_user(user_id: int):
+    """Suspend or unsuspend a user. Toggles their is_active flag."""
+    user = User.query.get_or_404(user_id)
+    if user.role == "admin":
+        return err("Cannot suspend an admin account")
+    d = request.get_json() or {}
+    # If "active" passed explicitly, use it; otherwise toggle
+    if "active" in d:
+        user.is_active = bool(d["active"])
+    else:
+        user.is_active = not user.is_active
+    db.session.commit()
+    return ok(user=user.to_dict(), suspended=not user.is_active)
+
+
+@admin_bp.delete("/users/<int:user_id>")
+@jwt_required()
+@admin_required
+def delete_user(user_id: int):
+    """Permanently delete a user. Refuses if active orders or pending withdrawals exist."""
+    from ..models.order import Order
+    from ..models.referral import Referral
+    user = User.query.get_or_404(user_id)
+    if user.role == "admin":
+        return err("Cannot delete an admin account")
+
+    # Safety checks
+    active_orders = Order.query.filter(
+        Order.user_id == user_id,
+        Order.status.in_(["Active", "Matured"]),
+    ).count()
+    if active_orders > 0:
+        return err(
+            f"Cannot delete — user has {active_orders} active or unsettled order(s). "
+            "Wait for settlement or suspend the account instead."
+        )
+
+    pending_wds = Withdrawal.query.filter(
+        Withdrawal.user_id == user_id,
+        Withdrawal.status.in_(["Pending", "Processing"]),
+    ).count()
+    if pending_wds > 0:
+        return err(
+            f"Cannot delete — user has {pending_wds} pending withdrawal(s). "
+            "Resolve them first."
+        )
+
+    # Cascade: clean up references that don't auto-cascade
+    Referral.query.filter(
+        (Referral.referrer_id == user_id) | (Referral.referred_user_id == user_id)
+    ).delete(synchronize_session=False)
+
+    # Delete wallet (if exists)
+    if user.wallet:
+        # Wallet transactions cascade via wallet relationship if configured; otherwise:
+        from ..models.wallet import WalletTransaction
+        WalletTransaction.query.filter_by(wallet_id=user.wallet.id).delete(synchronize_session=False)
+        db.session.delete(user.wallet)
+
+    # Delete settled orders too (since their plan_id is just FK to plans, no integrity issue)
+    Order.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+    email = user.email
+    db.session.delete(user)
+    db.session.commit()
+    return ok(deleted=True, email=email)
 
 
 # ── Orders ──────────────────────────────────────────────
@@ -186,7 +294,7 @@ def reject_withdrawal(wd_id: int):
     )
     wd.status = "Rejected"
     wd.processed_at = datetime.now(timezone.utc)
-    wd.admin_note = request.get_json({}).get("reason", "Rejected by admin")
+    wd.admin_note = (request.get_json(silent=True) or {}).get("reason", "Rejected by admin")
     db.session.commit()
     return ok(withdrawal=wd.to_dict())
 
@@ -199,16 +307,22 @@ def reject_withdrawal(wd_id: int):
 def create_plan():
     d = request.get_json() or {}
     required = ["name", "duration_days", "profit_percent"]
-    missing = [k for k in required if k not in d]
+    missing = [k for k in required if k not in d or d[k] in (None, "")]
     if missing:
         return err(f"Missing: {', '.join(missing)}")
-    plan = Plan(
-        name=d["name"],
-        duration_days=int(d["duration_days"]),
-        profit_percent=float(d["profit_percent"]),
-        min_amount=float(d.get("min_amount", 500)),
-        max_amount=float(d.get("max_amount", 50000)),
-    )
+    try:
+        plan = Plan(
+            name=str(d["name"]).strip(),
+            duration_days=int(d["duration_days"]),
+            profit_percent=float(d["profit_percent"]),
+            min_amount=float(d.get("min_amount", 500)),
+            max_amount=float(d.get("max_amount", 50000)),
+            is_active=bool(d.get("is_active", True)),
+        )
+    except (ValueError, TypeError):
+        return err("Invalid number in plan fields")
+    if plan.min_amount > plan.max_amount:
+        return err("Min amount cannot exceed max amount")
     db.session.add(plan)
     db.session.commit()
     return ok(plan=plan.to_dict()), 201
@@ -220,11 +334,41 @@ def create_plan():
 def update_plan(plan_id: int):
     plan = Plan.query.get_or_404(plan_id)
     d = request.get_json() or {}
-    for field in ("name", "duration_days", "profit_percent", "min_amount", "max_amount", "is_active"):
-        if field in d:
-            setattr(plan, field, d[field])
+    try:
+        if "name" in d: plan.name = str(d["name"]).strip()
+        if "duration_days" in d: plan.duration_days = int(d["duration_days"])
+        if "profit_percent" in d: plan.profit_percent = float(d["profit_percent"])
+        if "min_amount" in d: plan.min_amount = float(d["min_amount"])
+        if "max_amount" in d: plan.max_amount = float(d["max_amount"])
+        if "is_active" in d: plan.is_active = bool(d["is_active"])
+    except (ValueError, TypeError):
+        return err("Invalid number in plan fields")
+    if float(plan.min_amount) > float(plan.max_amount):
+        return err("Min amount cannot exceed max amount")
     db.session.commit()
     return ok(plan=plan.to_dict())
+
+
+@admin_bp.delete("/plans/<int:plan_id>")
+@jwt_required()
+@admin_required
+def delete_plan(plan_id: int):
+    """Delete a plan. Refuses if active orders exist for it (data integrity).
+    Suggests deactivating (is_active=false) instead."""
+    from ..models.order import Order
+    plan = Plan.query.get_or_404(plan_id)
+    active_orders = Order.query.filter(
+        Order.plan_id == plan_id,
+        Order.status.in_(["Active", "Matured"]),
+    ).count()
+    if active_orders > 0:
+        return err(
+            f"Cannot delete — {active_orders} active order(s) reference this plan. "
+            "Deactivate the plan instead so it stops showing to new users."
+        )
+    db.session.delete(plan)
+    db.session.commit()
+    return ok(deleted=True, plan_id=plan_id)
 
 
 # ── Pool ────────────────────────────────────────────────
@@ -237,10 +381,18 @@ def update_pool():
     if not pool:
         return err("Pool not found", 404)
     d = request.get_json() or {}
-    for field in ("public_pool_balance", "reserve_pool_balance", "sold_out_floor",
-                  "batch_release_amount", "auto_replenish_enabled"):
-        if field in d:
-            setattr(pool, field, d[field])
+    try:
+        for field in ("public_pool_balance", "reserve_pool_balance",
+                      "sold_out_floor", "batch_release_amount"):
+            if field in d and d[field] not in (None, ""):
+                val = float(d[field])
+                if val < 0:
+                    return err(f"{field} cannot be negative")
+                setattr(pool, field, val)
+        if "auto_replenish_enabled" in d:
+            pool.auto_replenish_enabled = bool(d["auto_replenish_enabled"])
+    except (ValueError, TypeError):
+        return err("Invalid number in pool fields")
     db.session.commit()
     return ok(pool=pool.to_dict())
 
