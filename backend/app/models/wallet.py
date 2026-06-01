@@ -1,5 +1,6 @@
 from ..extensions import db
 from datetime import datetime, timezone
+from decimal import Decimal
 
 
 class Wallet(db.Model):
@@ -19,9 +20,50 @@ class Wallet(db.Model):
     transactions = db.relationship("WalletTransaction", back_populates="wallet",
                                    order_by="WalletTransaction.created_at.desc()", cascade="all, delete-orphan")
 
+    def compute_withdrawable_balance(self) -> Decimal:
+        """
+        Withdrawable balance = sum of all matured returns
+                              - sum of withdrawals (paid + pending + processing)
+                              + sum of withdrawal_reversals (admin rejected → returned)
+
+        Withdrawals are debited from balance the moment the user requests them,
+        so a pending withdrawal must also count against the withdrawable pool —
+        otherwise users could queue multiple withdrawals exceeding their
+        actual matured returns.
+
+        Deposits, referral bonuses, milestone bonuses, and admin adjustments
+        do NOT contribute to withdrawable balance. They become withdrawable
+        only after being invested in a plan that matures.
+        """
+        matured = Decimal("0")
+        withdrawals = Decimal("0")
+        reversals = Decimal("0")
+
+        for tx in self.transactions:
+            amt = Decimal(str(tx.amount))
+            if tx.status == "reversed":
+                continue  # ignore reversed transactions (refund pair handles it)
+            if tx.type == "maturity_return" and tx.direction == "in":
+                matured += amt
+            elif tx.type == "withdrawal" and tx.direction == "out":
+                withdrawals += amt
+            elif tx.type == "withdrawal_reversal" and tx.direction == "in":
+                reversals += amt
+
+        withdrawable = matured - withdrawals + reversals
+        # Clamp at 0 — if math goes negative (pre-feature users), don't punish
+        if withdrawable < 0:
+            withdrawable = Decimal("0")
+        # Also clamp to actual balance — can't withdraw more than they have
+        balance = Decimal(str(self.balance))
+        if withdrawable > balance:
+            withdrawable = balance
+        return withdrawable
+
     def to_dict(self):
         return {
             "balance": float(self.balance),
+            "withdrawable_balance": float(self.compute_withdrawable_balance()),
             "total_deposited": float(self.total_deposited),
             "total_withdrawn": float(self.total_withdrawn),
             "total_earned": float(self.total_earned),

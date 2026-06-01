@@ -61,7 +61,30 @@ export function Wallet() {
         <div className="mt-1.5">
           <UsdtBadge ksh={wallet.balance} size="sm" variant="gold" />
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+
+        {/* Withdrawable vs locked breakdown */}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-xl p-3"
+            style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.18)' }}>
+            <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#4ade80' }}>
+              Withdrawable
+            </div>
+            <div className="font-mono font-bold text-base mt-1 text-green-400">{formatKsh(wallet.withdrawable_balance)}</div>
+            <div className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>From matured plans</div>
+          </div>
+          <div className="rounded-xl p-3"
+            style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.18)' }}>
+            <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#fbbf24' }}>
+              Investable
+            </div>
+            <div className="font-mono font-bold text-base mt-1" style={{ color: '#fbbf24' }}>
+              {formatKsh(Math.max(0, wallet.balance - wallet.withdrawable_balance))}
+            </div>
+            <div className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Invest to unlock</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
           <div>
             <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Deposited</div>
             <div className="font-mono font-semibold text-sm mt-1 text-white">{formatKsh(wallet.total_deposited)}</div>

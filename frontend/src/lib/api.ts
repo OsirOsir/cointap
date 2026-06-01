@@ -247,6 +247,7 @@ export function normalizeWithdrawal(w: any) {
 export function normalizeWallet(w: any) {
   return {
     balance: Number(w?.balance ?? 0),
+    withdrawable_balance: Number(w?.withdrawable_balance ?? 0),
     total_deposited: Number(w?.total_deposited ?? 0),
     total_withdrawn: Number(w?.total_withdrawn ?? 0),
     total_earned: Number(w?.total_earned ?? 0),

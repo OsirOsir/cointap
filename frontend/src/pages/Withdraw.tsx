@@ -151,9 +151,14 @@ export function Withdraw() {
         <div className="mt-5 grid sm:grid-cols-2 gap-3">
           <div className="rounded-xl p-4"
             style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Available</div>
-            <div className="text-xl font-bold font-mono text-gradient-gold mt-1">{formatKsh(wallet.balance)}</div>
-            <div className="mt-1"><UsdtBadge ksh={wallet.balance} size="xs" variant="gold" /></div>
+            <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Available to withdraw</div>
+            <div className="text-xl font-bold font-mono text-gradient-gold mt-1">{formatKsh(wallet.withdrawable_balance)}</div>
+            <div className="mt-1"><UsdtBadge ksh={wallet.withdrawable_balance} size="xs" variant="gold" /></div>
+            {wallet.balance > wallet.withdrawable_balance && (
+              <div className="mt-2 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                Wallet total: <span className="font-mono text-white">{formatKsh(wallet.balance)}</span> · {formatKsh(wallet.balance - wallet.withdrawable_balance)} locked
+              </div>
+            )}
           </div>
           <div className="rounded-xl p-4"
             style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -167,6 +172,19 @@ export function Withdraw() {
             </div>
           </div>
         </div>
+
+        {/* Withdrawable explanation — only when user has locked funds */}
+        {wallet.balance > wallet.withdrawable_balance && (
+          <div className="mt-4 p-4 rounded-xl flex items-start gap-3"
+            style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)' }}>
+            <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#38bdf8' }} />
+            <div className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              <span className="font-semibold text-white">Only matured investment returns can be withdrawn.</span>{' '}
+              Deposits, referral bonuses, and other credits must first be invested in a plan.
+              Once the plan matures, those funds become available here.
+            </div>
+          </div>
+        )}
 
         {/* Cooldown active */}
         {cooldownLeft > 0 && (

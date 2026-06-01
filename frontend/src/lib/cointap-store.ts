@@ -137,7 +137,7 @@ export interface ActivityLog {
 
 interface State {
   user: User | null
-  wallet: { balance: number; total_deposited: number; total_withdrawn: number; total_earned: number }
+  wallet: { balance: number; withdrawable_balance: number; total_deposited: number; total_withdrawn: number; total_earned: number }
   transactions: WalletTx[]
   orders: Order[]
   withdrawals: Withdrawal[]
@@ -175,7 +175,7 @@ const defaultPlans: Plan[] = [
 
 const initial: State = {
   user: null,
-  wallet: { balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 },
+  wallet: { balance: 0, withdrawable_balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 },
   transactions: [],
   orders: [],
   withdrawals: [],
@@ -438,7 +438,7 @@ export const store = {
         email_verified: false,
         two_factor_enabled: false,
       },
-      wallet: { balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 },
+      wallet: { balance: 0, withdrawable_balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 },
     }))
   },
 
@@ -564,7 +564,7 @@ export const store = {
       },
       // Only initialise wallet on first login
       wallet: isNewUser
-        ? { balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 }
+        ? { balance: 0, withdrawable_balance: 0, total_deposited: 0, total_withdrawn: 0, total_earned: 0 }
         : s.wallet,
     }))
 

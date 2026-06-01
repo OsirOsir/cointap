@@ -32,6 +32,25 @@ def request_withdrawal():
         return err("Phone number required")
 
     wallet = get_or_create_wallet(user.id)
+
+    # ── Withdrawable-balance enforcement ──────────────────
+    # Only matured investment returns are withdrawable. Deposits, referral
+    # bonuses, milestone bonuses, and admin adjustments must be invested
+    # in a plan and matured before they unlock for withdrawal.
+    withdrawable = float(wallet.compute_withdrawable_balance())
+    if amount > withdrawable:
+        if withdrawable <= 0:
+            return err(
+                "You don't have any withdrawable balance yet. "
+                "Invest in a plan first — once it matures, those returns "
+                "become withdrawable. This protects all users from fraud."
+            )
+        return err(
+            f"You can only withdraw up to Ksh {withdrawable:,.2f} right now. "
+            "Only matured investment returns are withdrawable. "
+            "Invest the rest in a plan to unlock more."
+        )
+
     try:
         debit_wallet(
             wallet, amount,
