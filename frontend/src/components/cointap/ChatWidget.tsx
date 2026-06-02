@@ -13,6 +13,7 @@
  *  - Mobile-friendly: bottom drawer on small screens
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { MessageCircle, X, Send, Minus } from 'lucide-react'
 import { chatApi } from '@/lib/api'
 import { useStore } from '@/lib/cointap-store'
@@ -50,6 +51,13 @@ function formatTime(iso: string): string {
 export function ChatWidget() {
   const user = useStore((s) => s.user)
   const isAdmin = user?.role === 'admin'
+  const location = useLocation()
+
+  // Routes that render AppLayout (and therefore have the mobile bottom nav).
+  // On these, we lift the chat bubble above the nav so it doesn't overlap
+  // the rightmost nav item (Refer).
+  const ROUTES_WITH_BOTTOM_NAV = ['/dashboard', '/wallet', '/plans', '/orders', '/referrals', '/profile']
+  const hasBottomNav = ROUTES_WITH_BOTTOM_NAV.some((p) => location.pathname.startsWith(p))
 
   const [open, setOpen] = useState<boolean>(() => localStorage.getItem(OPEN_KEY) === '1')
   const [conv, setConv] = useState<Conv | null>(null)
@@ -268,11 +276,15 @@ export function ChatWidget() {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open support chat"
-        className="fixed z-40 right-4 bottom-4 sm:right-5 sm:bottom-5 w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-110 active:scale-95 glow-gold"
+        className="fixed z-40 right-4 sm:right-5 sm:bottom-5 w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-110 active:scale-95 glow-gold"
         style={{
           background: 'var(--gradient-gold)',
           color: 'var(--primary-foreground)',
           boxShadow: '0 10px 30px -10px rgba(247,147,26,0.6)',
+          // On mobile, lift above the bottom nav if present. Desktop uses sm:bottom-5.
+          bottom: hasBottomNav
+            ? 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)'
+            : 'calc(env(safe-area-inset-bottom, 0px) + 1rem)',
         }}>
         <MessageCircle className="w-6 h-6" />
         {unread > 0 && (
