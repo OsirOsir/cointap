@@ -8,3 +8,4 @@ from .pool import PoolSettings
 from .mpesa_log import MpesaLog
 from .settings import PlatformSettings, get_settings
 from .announcement import Announcement
+from .chat import Conversation, ChatMessage, generate_visitor_token

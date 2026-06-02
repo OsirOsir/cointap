@@ -25,8 +25,9 @@ def create_app(env: str | None = None) -> Flask:
     from .routes.pool import pool_bp, public_settings_bp
     from .routes.mpesa import mpesa_bp
     from .routes.admin import admin_bp
+    from .routes.chat import chat_bp
 
-    for bp in [auth_bp, wallet_bp, orders_bp, plans_bp, withdrawals_bp, referrals_bp, pool_bp, public_settings_bp, mpesa_bp, admin_bp]:
+    for bp in [auth_bp, wallet_bp, orders_bp, plans_bp, withdrawals_bp, referrals_bp, pool_bp, public_settings_bp, mpesa_bp, admin_bp, chat_bp]:
         app.register_blueprint(bp)
 
     # Scheduler

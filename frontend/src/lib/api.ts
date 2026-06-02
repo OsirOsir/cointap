@@ -295,4 +295,73 @@ export const announcementsApi = {
   active: () => fetch('/api/announcements/active').then((r) => r.json()),
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Live chat API
+// Anonymous visitors authenticate via a visitor_token stored in localStorage.
+// Logged-in users authenticate via the JWT (the http object handles it).
+// ─────────────────────────────────────────────────────────────────
+
+const VISITOR_TOKEN_KEY = 'cointap_visitor_token'
+
+export const chatApi = {
+  getVisitorToken: () => localStorage.getItem(VISITOR_TOKEN_KEY) || '',
+  setVisitorToken: (t: string) => localStorage.setItem(VISITOR_TOKEN_KEY, t),
+  clearVisitorToken: () => localStorage.removeItem(VISITOR_TOKEN_KEY),
+
+  /** Start or resume a conversation. */
+  async start(payload: { name?: string; email?: string } = {}) {
+    const body: any = { ...payload }
+    const existing = localStorage.getItem(VISITOR_TOKEN_KEY)
+    if (existing) body.visitor_token = existing
+    const data = await http.post<any>('/chat/start', body, false)  // useAuth=false (auth optional)
+    if (data?.visitor_token) localStorage.setItem(VISITOR_TOKEN_KEY, data.visitor_token)
+    return data
+  },
+
+  /** Send a message. */
+  async send(bodyText: string) {
+    const payload: any = { body: bodyText }
+    const token = localStorage.getItem(VISITOR_TOKEN_KEY)
+    if (token) payload.visitor_token = token
+    return http.post<any>('/chat/send', payload, false)
+  },
+
+  /** Poll for messages. */
+  async messages(since?: string) {
+    const token = localStorage.getItem(VISITOR_TOKEN_KEY)
+    const params = new URLSearchParams()
+    if (token) params.set('visitor_token', token)
+    if (since) params.set('since', since)
+    const qs = params.toString()
+    return http.get<any>(`/chat/messages${qs ? '?' + qs : ''}`)
+  },
+
+  /** Mark admin messages as read. */
+  async markRead() {
+    const token = localStorage.getItem(VISITOR_TOKEN_KEY)
+    return http.post<any>('/chat/read', token ? { visitor_token: token } : {}, false)
+  },
+
+  /** Close the conversation. */
+  async close() {
+    const token = localStorage.getItem(VISITOR_TOKEN_KEY)
+    return http.post<any>('/chat/close', token ? { visitor_token: token } : {}, false)
+  },
+}
+
+// Admin chat wrappers
+export const adminChatApi = {
+  listConversations: (status: 'open' | 'closed' | 'all' = 'open', q = '') => {
+    const params = new URLSearchParams({ status })
+    if (q) params.set('q', q)
+    return http.get<any>(`/admin/chat/conversations?${params.toString()}`)
+  },
+  getConversation: (id: number) => http.get<any>(`/admin/chat/conversations/${id}`),
+  reply: (id: number, body: string) => http.post<any>(`/admin/chat/conversations/${id}/reply`, { body }),
+  markRead: (id: number) => http.post<any>(`/admin/chat/conversations/${id}/read`),
+  close: (id: number) => http.post<any>(`/admin/chat/conversations/${id}/close`),
+  reopen: (id: number) => http.post<any>(`/admin/chat/conversations/${id}/reopen`),
+  unreadCount: () => http.get<any>('/admin/chat/unread-count'),
+}
+
 export { ApiError }

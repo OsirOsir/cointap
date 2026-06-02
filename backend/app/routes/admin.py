@@ -593,3 +593,146 @@ def admin_delete_announcement(ann_id: int):
     db.session.delete(a)
     db.session.commit()
     return ok(deleted=True, id=ann_id)
+
+
+# ── Chat (admin side) ────────────────────────────────────
+
+@admin_bp.get("/chat/conversations")
+@jwt_required()
+@admin_required
+def admin_list_conversations():
+    """List all conversations sorted by latest activity.
+    Supports ?status=open|closed|all (default 'open') and ?q=search."""
+    from ..models.chat import Conversation
+    status = request.args.get("status", "open")
+    q_str = (request.args.get("q") or "").strip()
+
+    q = Conversation.query
+    if status in ("open", "closed"):
+        q = q.filter_by(status=status)
+    # 'all' → no filter
+
+    if q_str:
+        like = f"%{q_str}%"
+        # Search across visitor_name, visitor_email, and joined user fields
+        q = q.outerjoin(User, Conversation.user_id == User.id).filter(
+            db.or_(
+                Conversation.visitor_name.ilike(like),
+                Conversation.visitor_email.ilike(like),
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+            )
+        )
+
+    convs = q.order_by(Conversation.last_message_at.desc()).limit(200).all()
+    return ok(conversations=[c.to_dict() for c in convs])
+
+
+@admin_bp.get("/chat/conversations/<int:conv_id>")
+@jwt_required()
+@admin_required
+def admin_get_conversation(conv_id: int):
+    """Full thread + lightweight user context for admin UI."""
+    from ..models.chat import Conversation
+    conv = Conversation.query.get_or_404(conv_id)
+    d = conv.to_dict(include_messages=True)
+    # Inject context if logged-in user
+    if conv.user:
+        u = conv.user
+        d["user_context"] = {
+            "id": u.id,
+            "email": u.email,
+            "phone": u.phone,
+            "is_active": u.is_active,
+            "role": u.role,
+            "referral_code": u.referral_code,
+            "wallet": u.wallet.to_dict() if u.wallet else None,
+        }
+    else:
+        d["user_context"] = None
+    return ok(conversation=d)
+
+
+@admin_bp.post("/chat/conversations/<int:conv_id>/reply")
+@jwt_required()
+@admin_required
+def admin_reply(conv_id: int):
+    from ..models.chat import Conversation, ChatMessage
+    conv = Conversation.query.get_or_404(conv_id)
+    if conv.status != "open":
+        return err("This conversation is closed. Reopen it first.", 400)
+
+    d = request.get_json() or {}
+    body = (d.get("body") or "").strip()
+    if not body:
+        return err("Reply body cannot be empty")
+    if len(body) > 2000:
+        return err("Reply too long (max 2000 chars)")
+
+    msg = ChatMessage(conversation_id=conv.id, sender="admin", body=body)
+    db.session.add(msg)
+    conv.last_message_at = msg.created_at or datetime.now(timezone.utc)
+    conv.unread_user = (conv.unread_user or 0) + 1
+    # When admin replies, they've now seen all user messages
+    conv.unread_admin = 0
+    db.session.commit()
+    return ok(message=msg.to_dict())
+
+
+@admin_bp.post("/chat/conversations/<int:conv_id>/read")
+@jwt_required()
+@admin_required
+def admin_mark_read(conv_id: int):
+    from ..models.chat import Conversation
+    conv = Conversation.query.get_or_404(conv_id)
+    conv.unread_admin = 0
+    db.session.commit()
+    return ok(ok=True)
+
+
+@admin_bp.post("/chat/conversations/<int:conv_id>/close")
+@jwt_required()
+@admin_required
+def admin_close(conv_id: int):
+    from ..models.chat import Conversation, ChatMessage
+    conv = Conversation.query.get_or_404(conv_id)
+    if conv.status == "closed":
+        return ok(conversation=conv.to_dict())
+    conv.status = "closed"
+    db.session.add(ChatMessage(
+        conversation_id=conv.id,
+        sender="system",
+        body="Conversation closed by admin.",
+    ))
+    db.session.commit()
+    return ok(conversation=conv.to_dict())
+
+
+@admin_bp.post("/chat/conversations/<int:conv_id>/reopen")
+@jwt_required()
+@admin_required
+def admin_reopen(conv_id: int):
+    from ..models.chat import Conversation, ChatMessage
+    conv = Conversation.query.get_or_404(conv_id)
+    if conv.status == "open":
+        return ok(conversation=conv.to_dict())
+    conv.status = "open"
+    db.session.add(ChatMessage(
+        conversation_id=conv.id,
+        sender="system",
+        body="Conversation reopened by admin.",
+    ))
+    db.session.commit()
+    return ok(conversation=conv.to_dict())
+
+
+@admin_bp.get("/chat/unread-count")
+@jwt_required()
+@admin_required
+def admin_chat_unread():
+    """Returns total unread messages across all conversations.
+    Used for badge in admin sidebar."""
+    from ..models.chat import Conversation
+    total = db.session.query(db.func.coalesce(db.func.sum(Conversation.unread_admin), 0)).scalar() or 0
+    open_count = Conversation.query.filter_by(status="open").count()
+    return ok(unread=int(total), open_conversations=int(open_count))
