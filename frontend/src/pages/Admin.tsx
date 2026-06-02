@@ -4,13 +4,13 @@ import {
   Shield, Users, Package, Droplets, BarChart3, Megaphone, Settings as SettingsIcon,
   ScrollText, Wallet, FileText, Search, Edit2, Trash2, UserX, UserCheck, Plus,
   Check, X, AlertTriangle, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
-  Activity, DollarSign, Clock, ArrowLeft, Home, RefreshCw,
+  Activity, DollarSign, Clock, ArrowLeft, Home, RefreshCw, MessageCircle, Send,
 } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
-import { adminApi } from '@/lib/api'
+import { adminApi, adminChatApi } from '@/lib/api'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
-type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
+type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'chat' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview', label: 'Overview', icon: BarChart3 },
@@ -19,6 +19,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'pool', label: 'Pool', icon: Droplets },
   { key: 'orders', label: 'Orders', icon: FileText },
   { key: 'withdrawals', label: 'Withdrawals', icon: Wallet },
+  { key: 'chat', label: 'Chat', icon: MessageCircle },
   { key: 'analytics', label: 'Analytics', icon: TrendingUp },
   { key: 'security', label: 'Security', icon: Shield },
   { key: 'announcements', label: 'Announcements', icon: Megaphone },
@@ -29,6 +30,24 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
 export function Admin() {
   const user = useStore((s) => s.user)
   const [tab, setTab] = useState<Tab>('overview')
+  const [chatUnread, setChatUnread] = useState(0)
+
+  // Poll the global chat-unread badge every 15s while admin is in this view
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return
+    let cancelled = false
+    async function fetchUnread() {
+      try {
+        const data = await adminChatApi.unreadCount()
+        if (!cancelled) setChatUnread(Number(data?.unread || 0))
+      } catch { /* silent */ }
+    }
+    fetchUnread()
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') fetchUnread()
+    }, 15000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user])
 
   if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />
 
@@ -74,15 +93,22 @@ export function Admin() {
           {TABS.map((t) => {
             const Icon = t.icon
             const active = tab === t.key
+            const showBadge = t.key === 'chat' && chatUnread > 0
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap flex items-center gap-2 transition-all"
+                className="relative px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap flex items-center gap-2 transition-all"
                 style={{
                   background: active ? 'var(--gradient-gold)' : 'transparent',
                   color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
                 }}>
                 <Icon className="w-4 h-4" />
                 {t.label}
+                {showBadge && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
+                    style={{ background: '#ef4444' }}>
+                    {chatUnread > 9 ? '9+' : chatUnread}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -97,6 +123,7 @@ export function Admin() {
         {tab === 'pool' && <PoolTab />}
         {tab === 'orders' && <OrdersTab />}
         {tab === 'withdrawals' && <WithdrawalsTab />}
+        {tab === 'chat' && <ChatTab />}
         {tab === 'analytics' && <AnalyticsTab />}
         {tab === 'security' && <SecurityTab />}
         {tab === 'announcements' && <AnnouncementsTab />}
@@ -2293,6 +2320,402 @@ function SecurityTab() {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+
+// ─── CHAT TAB ───────────────────────────────────────────────────
+// Two-pane support inbox. Conversations on the left, active chat on the right.
+// Polls every 5s for new conversations and 3s for messages in the active one.
+function ChatTab() {
+  type Conv = {
+    id: number
+    user_id: number | null
+    is_guest: boolean
+    display_name: string
+    display_contact: string
+    visitor_name?: string | null
+    visitor_email?: string | null
+    status: 'open' | 'closed'
+    unread_admin: number
+    unread_user: number
+    created_at: string
+    last_message_at: string
+  }
+  type Msg = {
+    id: number
+    conversation_id: number
+    sender: 'user' | 'admin' | 'system'
+    body: string
+    created_at: string
+  }
+  type UserContext = {
+    id: number
+    email: string
+    phone: string
+    is_active: boolean
+    role: string
+    referral_code: string
+    wallet: any
+  } | null
+
+  const [statusFilter, setStatusFilter] = useState<'open' | 'closed' | 'all'>('open')
+  const [search, setSearch] = useState('')
+  const [conversations, setConversations] = useState<Conv[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
+  const [activeConv, setActiveConv] = useState<Conv | null>(null)
+  const [messages, setMessages] = useState<Msg[]>([])
+  const [userContext, setUserContext] = useState<UserContext>(null)
+  const [reply, setReply] = useState('')
+  const [sending, setSending] = useState(false)
+  const [loadingList, setLoadingList] = useState(true)
+  const [loadingThread, setLoadingThread] = useState(false)
+  const [error, setError] = useState('')
+
+  // Refresh conversations list
+  async function loadConversations(silent = false) {
+    if (!silent) setLoadingList(true)
+    try {
+      const data = await adminChatApi.listConversations(statusFilter, search.trim())
+      setConversations(data.conversations || [])
+    } catch (e: any) {
+      setError(e?.message || 'Could not load conversations')
+    } finally {
+      if (!silent) setLoadingList(false)
+    }
+  }
+
+  // Load a specific conversation
+  async function loadConversation(id: number, silent = false) {
+    if (!silent) setLoadingThread(true)
+    try {
+      const data = await adminChatApi.getConversation(id)
+      if (data?.conversation) {
+        setActiveConv(data.conversation)
+        setMessages(data.conversation.messages || [])
+        setUserContext(data.conversation.user_context || null)
+        // Mark as read on the server
+        if ((data.conversation.unread_admin ?? 0) > 0) {
+          await adminChatApi.markRead(id).catch(() => {})
+          // Update local list so the badge clears
+          setConversations((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, unread_admin: 0 } : c))
+          )
+        }
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Could not load conversation')
+    } finally {
+      if (!silent) setLoadingThread(false)
+    }
+  }
+
+  // First load + filter changes
+  useEffect(() => {
+    loadConversations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter])
+
+  // Search with light debounce
+  useEffect(() => {
+    const id = window.setTimeout(() => loadConversations(), 250)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Periodic refresh
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      loadConversations(true)
+      if (activeId) loadConversation(activeId, true)
+    }, 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, statusFilter, search])
+
+  async function send() {
+    const text = reply.trim()
+    if (!text || !activeId || sending) return
+    setSending(true)
+    setError('')
+    try {
+      const res = await adminChatApi.reply(activeId, text)
+      if (res?.message) {
+        setMessages((prev) => [...prev, res.message])
+        setReply('')
+      }
+      // Re-fetch list so last_message_at sorts correctly
+      loadConversations(true)
+    } catch (e: any) {
+      setError(e?.message || 'Could not send reply')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function closeConv() {
+    if (!activeId) return
+    if (!confirm('Close this conversation?')) return
+    try {
+      await adminChatApi.close(activeId)
+      await loadConversation(activeId)
+      loadConversations(true)
+    } catch (e: any) {
+      setError(e?.message || 'Could not close')
+    }
+  }
+
+  async function reopenConv() {
+    if (!activeId) return
+    try {
+      await adminChatApi.reopen(activeId)
+      await loadConversation(activeId)
+      loadConversations(true)
+    } catch (e: any) {
+      setError(e?.message || 'Could not reopen')
+    }
+  }
+
+  function onReplyKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  // Quick canned replies — keep small and useful
+  const SHORTCUTS: { label: string; body: string }[] = [
+    { label: '👋 Greet', body: 'Hi there! Thanks for reaching out to CoinTap. How can I help?' },
+    { label: '💰 Deposit', body: 'To deposit, go to Wallet → Deposit and enter the amount. You\'ll receive an M-Pesa STK Push prompt on your phone.' },
+    { label: '💸 Withdraw', body: 'You can withdraw from matured investments only. Go to Withdraw and enter the amount. Approval takes 1–24 hours.' },
+    { label: '🔒 Account', body: 'For account security questions, please verify your registered email so I can help further.' },
+    { label: '⏳ Hold', body: 'Let me check that for you — one moment.' },
+    { label: '✅ Resolved', body: 'Glad I could help! Is there anything else you need?' },
+  ]
+
+  return (
+    <div className="grid lg:grid-cols-[340px_1fr] gap-4 h-[calc(100dvh-220px)] min-h-[500px]">
+      {/* LEFT — Conversation list */}
+      <div className="glass rounded-2xl flex flex-col overflow-hidden">
+        {/* Filters */}
+        <div className="p-3 space-y-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex gap-1">
+            {(['open', 'closed', 'all'] as const).map((s) => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${statusFilter === s ? 'text-white' : 'opacity-60 hover:opacity-100'}`}
+                style={statusFilter === s
+                  ? { background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }
+                  : { background: 'rgba(255,255,255,0.04)', color: 'var(--muted-foreground)' }
+                }>
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5" style={{ color: 'var(--muted-foreground)' }} />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name or email..."
+              className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-white"
+              style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }} />
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {loadingList && (
+            <div className="p-4 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Loading…
+            </div>
+          )}
+          {!loadingList && conversations.length === 0 && (
+            <div className="p-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              No conversations found.
+            </div>
+          )}
+          {conversations.map((c) => (
+            <button key={c.id} onClick={() => { setActiveId(c.id); loadConversation(c.id) }}
+              className="w-full text-left px-3 py-3 hover:opacity-80 transition-opacity"
+              style={{
+                background: activeId === c.id ? 'rgba(247,147,26,0.08)' : 'transparent',
+                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                borderLeft: activeId === c.id ? '3px solid var(--primary)' : '3px solid transparent',
+              }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-sm font-semibold text-white truncate">{c.display_name}</div>
+                    {c.is_guest && (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--muted-foreground)' }}>
+                        Guest
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] truncate mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                    {c.display_contact}
+                  </div>
+                  <div className="text-[10px] mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--muted-foreground)' }}>
+                    <Clock className="w-2.5 h-2.5" />
+                    {new Date(c.last_message_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {c.status === 'closed' && (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded ml-1"
+                        style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--muted-foreground)' }}>
+                        Closed
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {c.unread_admin > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center text-white flex-shrink-0"
+                    style={{ background: '#ef4444' }}>
+                    {c.unread_admin > 9 ? '9+' : c.unread_admin}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* RIGHT — Active conversation */}
+      <div className="glass rounded-2xl flex flex-col overflow-hidden">
+        {!activeId ? (
+          <div className="flex-1 flex items-center justify-center text-center p-8">
+            <div>
+              <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-30" style={{ color: 'var(--muted-foreground)' }} />
+              <div className="text-sm font-semibold text-white">Select a conversation</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                Pick one from the list to reply.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Active header */}
+            <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-white truncate">{activeConv?.display_name || '—'}</div>
+                <div className="text-[11px] truncate" style={{ color: 'var(--muted-foreground)' }}>
+                  {activeConv?.display_contact || '—'}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {activeConv?.status === 'open' ? (
+                  <button onClick={closeConv}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--muted-foreground)' }}>
+                    Close
+                  </button>
+                ) : (
+                  <button onClick={reopenConv}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}>
+                    Reopen
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Context strip — only if a registered user */}
+            {userContext && (
+              <div className="px-4 py-2 flex flex-wrap gap-3 text-[11px]"
+                style={{ background: 'rgba(247,147,26,0.04)', borderBottom: '1px solid rgba(247,147,26,0.1)' }}>
+                <span style={{ color: 'var(--muted-foreground)' }}>
+                  Balance: <span className="font-mono text-white">{formatKsh(userContext.wallet?.balance ?? 0)}</span>
+                </span>
+                <span style={{ color: 'var(--muted-foreground)' }}>
+                  Withdrawable: <span className="font-mono text-green-400">{formatKsh(userContext.wallet?.withdrawable_balance ?? 0)}</span>
+                </span>
+                <span style={{ color: 'var(--muted-foreground)' }}>
+                  Phone: <span className="text-white">{userContext.phone || '—'}</span>
+                </span>
+                <span style={{ color: 'var(--muted-foreground)' }}>
+                  Status: <span className={userContext.is_active ? 'text-green-400' : 'text-red-400'}>
+                    {userContext.is_active ? 'Active' : 'Suspended'}
+                  </span>
+                </span>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3"
+              style={{ background: 'rgba(0,0,0,0.15)' }}>
+              {loadingThread && messages.length === 0 && (
+                <div className="text-center text-xs py-8" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
+              )}
+              {messages.map((m) => {
+                if (m.sender === 'system') {
+                  return (
+                    <div key={m.id} className="text-center text-[11px] italic px-4" style={{ color: 'var(--muted-foreground)' }}>
+                      {m.body}
+                    </div>
+                  )
+                }
+                const isAdmin = m.sender === 'admin'
+                return (
+                  <div key={m.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[75%] flex flex-col gap-0.5">
+                      <div className={`px-3.5 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${isAdmin ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                        style={isAdmin
+                          ? { background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }
+                          : { background: 'rgba(30,37,53,0.9)', color: 'white', border: '1px solid rgba(255,255,255,0.05)' }
+                        }>
+                        {m.body}
+                      </div>
+                      <div className={`text-[10px] px-1 ${isAdmin ? 'text-right' : 'text-left'}`}
+                        style={{ color: 'var(--muted-foreground)' }}>
+                        {new Date(m.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Error toast */}
+            {error && (
+              <div className="px-4 py-2 text-[11px] flex items-center justify-between"
+                style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                <span>{error}</span>
+                <button onClick={() => setError('')} className="ml-2"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+
+            {/* Shortcuts */}
+            {activeConv?.status === 'open' && (
+              <div className="px-3 py-2 flex flex-wrap gap-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.2)' }}>
+                {SHORTCUTS.map((s) => (
+                  <button key={s.label} onClick={() => setReply(s.body)}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-medium hover:opacity-80"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--muted-foreground)' }}
+                    title={s.body}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Reply box */}
+            <div className="p-3 flex items-end gap-2"
+              style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.3)' }}>
+              <textarea value={reply} onChange={(e) => setReply(e.target.value)} onKeyDown={onReplyKey}
+                placeholder={activeConv?.status === 'closed' ? 'Reopen to reply…' : 'Type your reply…'}
+                disabled={activeConv?.status === 'closed'} rows={1} maxLength={2000}
+                className="flex-1 px-3 py-2.5 rounded-xl text-sm text-white resize-none max-h-32 disabled:opacity-50"
+                style={{ background: 'rgba(30,37,53,0.8)', border: '1px solid rgba(255,255,255,0.08)' }} />
+              <button onClick={send}
+                disabled={!reply.trim() || sending || activeConv?.status === 'closed'}
+                aria-label="Send reply"
+                className="w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 transition-transform active:scale-95"
+                style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
