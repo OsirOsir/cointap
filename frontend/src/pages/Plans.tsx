@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Lock, X, Zap, Shield, Coins } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan } from '@/lib/cointap-store'
 import { UsdtBadge } from '@/lib/usdt'
+import { LiveNumber } from '@/components/cointap/LiveNumber'
 
 export function Plans() {
   const plans = useStore((s) => s.plans)
@@ -49,7 +50,7 @@ export function Plans() {
               Available Shares in Pool
             </div>
             <div className="text-3xl sm:text-4xl font-bold text-gradient-gold font-mono mt-2">
-              {formatKsh(pool.public_pool_balance)}
+              <LiveNumber value={pool.public_pool_balance} prefix="Ksh " jitter={0.0015} pulse />
             </div>
             <div className="mt-1">
               <UsdtBadge ksh={pool.public_pool_balance} size="xs" variant="gold" />

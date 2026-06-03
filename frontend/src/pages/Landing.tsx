@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { ArrowRight, Shield, Zap, TrendingUp, Wallet, Clock, CheckCircle2, Menu, X } from 'lucide-react'
 import { Logo } from '@/components/cointap/Logo'
 import { NodeBackground } from '@/components/cointap/NodeBackground'
+import { LiveNumber } from '@/components/cointap/LiveNumber'
+import { poolApi } from '@/lib/api'
 
 const navLinks = [
   { href: '#how', label: 'How it works' },
@@ -22,6 +24,8 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 export function Landing() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [poolBalance, setPoolBalance] = useState<number>(2_450_000)
+  const [poolDepletion, setPoolDepletion] = useState<number>(61)
 
   // Smooth scroll to anchor when clicked
   function scrollTo(href: string) {
@@ -32,6 +36,28 @@ export function Landing() {
     }
     setMobileNavOpen(false)
   }
+
+  // Fetch real pool status (public endpoint — works without login).
+  // Refresh every 15s so the number stays roughly real.
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const data: any = await poolApi.status()
+        if (cancelled) return
+        const pub = Number(data?.public_pool_balance ?? 0)
+        const res = Number(data?.reserve_pool_balance ?? 0)
+        if (pub > 0) setPoolBalance(pub)
+        const total = pub + res
+        if (total > 0) setPoolDepletion(Math.round((1 - pub / total) * 100))
+      } catch { /* keep defaults */ }
+    }
+    load()
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') load()
+    }, 15000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
 
   // Close mobile nav on Escape key
   useEffect(() => {
@@ -197,15 +223,18 @@ export function Landing() {
           <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>Available Share Pool</div>
-              <div className="text-3xl sm:text-4xl font-bold text-gradient-gold font-mono mt-1">Ksh 2,450,000</div>
+              <div className="text-3xl sm:text-4xl font-bold text-gradient-gold font-mono mt-1">
+                <LiveNumber value={poolBalance} prefix="Ksh " jitter={0.0015} pulse />
+              </div>
               <div className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>Public liquidity · Auto-replenishing</div>
             </div>
             <div className="w-full sm:w-64">
               <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
-                <span>Pool depletion</span><span>61%</span>
+                <span>Pool depletion</span><span>{poolDepletion}%</span>
               </div>
               <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.4)' }}>
-                <div className="h-full rounded-full" style={{ width: '61%', background: 'var(--gradient-gold)' }} />
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{ width: poolDepletion + '%', background: 'var(--gradient-gold)' }} />
               </div>
             </div>
           </div>

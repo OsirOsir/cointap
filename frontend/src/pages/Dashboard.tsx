@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Zap, ArrowDownToLine, Flame, TrendingUp, Activity, Droplets,
   Users as UsersIcon, ArrowDownRight, ArrowUpRight, PiggyBank, BarChart3,
@@ -10,6 +10,7 @@ import { NodeBackground } from '@/components/cointap/NodeBackground'
 import { EmailVerificationBanner } from '@/components/cointap/Security'
 import { AnnouncementsBanner } from '@/components/cointap/AnnouncementsBanner'
 import { UsdtBadge } from '@/lib/usdt'
+import { LiveNumber } from '@/components/cointap/LiveNumber'
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -47,12 +48,154 @@ const sparkline = (seed: number, trending: 'up' | 'down') => {
   return arr
 }
 
+// ─── LIVE MARKET TICKER ───────────────────────────────────────────
+// Real BTC/ETH/SOL/BNB prices fetched from CoinGecko, smoothly animated
+// with continuous jitter + a scrolling sparkline that updates every ~1.5s.
+type Coin = {
+  symbol: string
+  pair: string
+  id: string         // CoinGecko id
+  color: string
+  baseChange: number // 24h change %, refreshed from API
+}
+const COINS: Coin[] = [
+  { symbol: 'BTC', pair: 'USDT', id: 'bitcoin',  color: '#f7931a', baseChange: 2.60 },
+  { symbol: 'ETH', pair: 'USDT', id: 'ethereum', color: '#627eea', baseChange: 1.10 },
+  { symbol: 'SOL', pair: 'USDT', id: 'solana',   color: '#14f195', baseChange: -0.85 },
+  { symbol: 'BNB', pair: 'USDT', id: 'binancecoin', color: '#f3ba2f', baseChange: 0.45 },
+]
+// Fallback values used until the first CoinGecko fetch resolves
+const FALLBACK_PRICES: Record<string, number> = {
+  bitcoin: 67548.9, ethereum: 3504.7, solana: 180.7, binancecoin: 612.3,
+}
+
+const SPARK_LEN = 24   // number of points visible
+const SPARK_TICK_MS = 1500  // how often we append a new point
+
 const marketCoins = [
   { symbol: 'BTC', pair: 'USDT', price: 67548.9, change: 2.60, trend: 'up' as const, color: '#f7931a', spark: sparkline(1, 'up') },
   { symbol: 'ETH', pair: 'USDT', price: 3504.7, change: 1.10, trend: 'up' as const, color: '#627eea', spark: sparkline(2, 'up') },
   { symbol: 'SOL', pair: 'USDT', price: 180.7, change: -0.85, trend: 'down' as const, color: '#14f195', spark: sparkline(3, 'down') },
   { symbol: 'BNB', pair: 'USDT', price: 612.3, change: 0.45, trend: 'up' as const, color: '#f3ba2f', spark: sparkline(4, 'up') },
 ]
+
+// ─── LIVE MARKET CARD ────────────────────────────────────────────
+function LiveMarketCard({ coin, basePrice, change }: {
+  coin: Coin
+  basePrice: number    // anchor price (refreshed from API every 60s)
+  change: number       // 24h % change (refreshed from API every 60s)
+}) {
+  // Current "live" price — anchored to basePrice with continuous jitter
+  const [livePrice, setLivePrice] = useState(basePrice)
+  // Rolling sparkline buffer
+  const [spark, setSpark] = useState(() => {
+    const arr: { i: number; v: number }[] = []
+    for (let i = 0; i < SPARK_LEN; i++) arr.push({ i, v: basePrice })
+    return arr
+  })
+
+  // When basePrice changes (API refresh), re-anchor everything
+  const basePriceRef = useRef(basePrice)
+  useEffect(() => { basePriceRef.current = basePrice }, [basePrice])
+
+  // Continuous price jitter — same approach as LiveNumber. ±0.08% feels alive
+  // but realistic for major coins on a 1.5s scale.
+  useEffect(() => {
+    let raf: number | null = null
+    let cancelled = false
+    const phase = { v: 0 }
+    function tick() {
+      if (cancelled) return
+      const now = performance.now()
+      const anchor = basePriceRef.current
+      const jitter = 0.0008
+      const t1 = Math.sin(now / 1300) * jitter * 0.5
+      const t2 = Math.sin(now / 470) * jitter * 0.3
+      const t3 = Math.sin(now / 210) * jitter * 0.2
+      phase.v = phase.v * 0.94 + (Math.random() - 0.5) * jitter * 0.15
+      setLivePrice(anchor * (1 + t1 + t2 + t3 + phase.v))
+      if (document.visibilityState === 'visible') {
+        raf = requestAnimationFrame(tick)
+      } else {
+        const onVis = () => {
+          document.removeEventListener('visibilitychange', onVis)
+          if (!cancelled) raf = requestAnimationFrame(tick)
+        }
+        document.addEventListener('visibilitychange', onVis)
+      }
+    }
+    raf = requestAnimationFrame(tick)
+    return () => { cancelled = true; if (raf) cancelAnimationFrame(raf) }
+  }, [])
+
+  // Sparkline: every SPARK_TICK_MS, append current livePrice and shift left.
+  // Use a ref-snapshot so the interval can read fresh price without re-subscribing.
+  const livePriceRef = useRef(livePrice)
+  useEffect(() => { livePriceRef.current = livePrice }, [livePrice])
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      setSpark((prev) => {
+        const next = prev.slice(1)
+        next.push({ i: (prev[prev.length - 1]?.i ?? 0) + 1, v: livePriceRef.current })
+        return next
+      })
+    }, SPARK_TICK_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  const up = change >= 0
+  const accent = up ? '#4ade80' : '#ef4444'
+  const decimals = livePrice < 100 ? 2 : 1
+
+  return (
+    <div className="flex-shrink-0 w-[180px] rounded-2xl p-3 group hover:scale-[1.02] transition-transform cursor-pointer"
+      style={{
+        background: 'rgba(10,14,26,0.6)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(20px)',
+      }}>
+      {/* Top: ticker */}
+      <div className="flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full animate-pulse"
+          style={{ background: accent }} />
+        <span className="font-bold text-white text-sm">{coin.symbol}</span>
+        <span className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+          /{coin.pair}
+        </span>
+      </div>
+
+      {/* Price + change */}
+      <div className="mt-2 flex items-baseline justify-between gap-1">
+        <div className="font-mono font-bold text-white text-base truncate tabular-nums">
+          ${livePrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 mt-0.5">
+        {up
+          ? <ArrowUpRight className="w-3 h-3" style={{ color: accent }} />
+          : <ArrowDownRight className="w-3 h-3" style={{ color: accent }} />}
+        <span className="text-xs font-bold font-mono"
+          style={{ color: accent }}>
+          {up ? '+' : ''}{change.toFixed(2)}%
+        </span>
+      </div>
+
+      {/* Sparkline — rolling */}
+      <div className="mt-2 h-8 -mx-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={spark}>
+            <Line type="monotone" dataKey="v"
+              stroke={accent}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
 
 // ─── MAIN ─────────────────────────────────────────────────────
 export function Dashboard() {
@@ -73,6 +216,40 @@ export function Dashboard() {
   useEffect(() => {
     const t = setInterval(() => setBlock((b) => b + 1), 12000)
     return () => clearInterval(t)
+  }, [])
+
+  // Live market prices — fetch real BTC/ETH/SOL/BNB from CoinGecko every 60s.
+  // Falls back to seed values until first response arrives.
+  const [marketPrices, setMarketPrices] = useState<Record<string, number>>(FALLBACK_PRICES)
+  const [marketChanges, setMarketChanges] = useState<Record<string, number>>(
+    () => Object.fromEntries(COINS.map((c) => [c.id, c.baseChange]))
+  )
+  useEffect(() => {
+    let cancelled = false
+    async function fetchPrices() {
+      try {
+        const ids = COINS.map((c) => c.id).join(',')
+        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+        const res = await fetch(url, { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        const prices: Record<string, number> = {}
+        const changes: Record<string, number> = {}
+        for (const c of COINS) {
+          const d = data[c.id]
+          if (d && typeof d.usd === 'number') prices[c.id] = d.usd
+          if (d && typeof d.usd_24h_change === 'number') changes[c.id] = d.usd_24h_change
+        }
+        if (Object.keys(prices).length > 0) setMarketPrices((prev) => ({ ...prev, ...prices }))
+        if (Object.keys(changes).length > 0) setMarketChanges((prev) => ({ ...prev, ...changes }))
+      } catch { /* offline / rate-limited — keep last values */ }
+    }
+    fetchPrices()
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') fetchPrices()
+    }, 60000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [])
 
   return (
@@ -229,53 +406,11 @@ export function Dashboard() {
         <div className="flex gap-3 overflow-x-auto pb-1 -mx-2 px-2"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <style>{`.market-row::-webkit-scrollbar { display: none }`}</style>
-          {marketCoins.map((c) => (
-            <div key={c.symbol}
-              className="flex-shrink-0 w-[180px] rounded-2xl p-3 group hover:scale-[1.02] transition-transform cursor-pointer"
-              style={{
-                background: 'rgba(10,14,26,0.6)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                backdropFilter: 'blur(20px)',
-              }}>
-              {/* Top: ticker */}
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: c.trend === 'up' ? '#4ade80' : '#ef4444' }} />
-                <span className="font-bold text-white text-sm">{c.symbol}</span>
-                <span className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-                  /{c.pair}
-                </span>
-              </div>
-
-              {/* Price + change */}
-              <div className="mt-2 flex items-baseline justify-between gap-1">
-                <div className="font-mono font-bold text-white text-base truncate">
-                  ${c.price.toLocaleString(undefined, { minimumFractionDigits: c.price < 100 ? 2 : 1 })}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 mt-0.5">
-                {c.change > 0
-                  ? <ArrowUpRight className="w-3 h-3 text-green-400" />
-                  : <ArrowDownRight className="w-3 h-3 text-red-400" />}
-                <span className="text-xs font-bold font-mono"
-                  style={{ color: c.change > 0 ? '#4ade80' : '#ef4444' }}>
-                  {c.change > 0 ? '+' : ''}{c.change.toFixed(2)}%
-                </span>
-              </div>
-
-              {/* Sparkline */}
-              <div className="mt-2 h-8 -mx-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={c.spark}>
-                    <Line type="monotone" dataKey="v"
-                      stroke={c.trend === 'up' ? '#4ade80' : '#ef4444'}
-                      strokeWidth={1.5}
-                      dot={false}
-                      isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+          {COINS.map((c) => (
+            <LiveMarketCard key={c.symbol}
+              coin={c}
+              basePrice={marketPrices[c.id] ?? FALLBACK_PRICES[c.id]}
+              change={marketChanges[c.id] ?? c.baseChange} />
           ))}
         </div>
       </div>
@@ -420,7 +555,7 @@ export function Dashboard() {
                 Public Pool
               </div>
               <div className="text-xl font-bold text-gradient-gold font-mono mt-1">
-                {formatKsh(pool.public_pool_balance)}
+                <LiveNumber value={pool.public_pool_balance} prefix="Ksh " jitter={0.0015} pulse />
               </div>
               <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.3)' }}>
                 <div className="h-full rounded-full"
@@ -439,7 +574,7 @@ export function Dashboard() {
                   Reserve
                 </div>
                 <div className="font-mono font-bold text-white text-xs mt-1">
-                  {formatKsh(pool.reserve_pool_balance)}
+                  <LiveNumber value={pool.reserve_pool_balance} prefix="Ksh " jitter={0.0008} />
                 </div>
               </div>
               <div className="p-2.5 rounded-lg"
