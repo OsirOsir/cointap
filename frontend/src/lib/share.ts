@@ -24,7 +24,19 @@ export async function shareOrCopy(opts: {
   // 1) Native share sheet — only on mobile if requested
   if (preferShare && isMobile && typeof navigator.share === 'function') {
     try {
-      await navigator.share({ title, text: shareText || text, url: text })
+      // IMPORTANT: don't include the URL inside `text` if we also pass `url` —
+      // many Android share targets concatenate both fields, producing a
+      // duplicated link in the pasted output. Build a clean message body.
+      const isUrl = /^https?:\/\//i.test(text)
+      const messageBody = (shareText || '').replace(text, '').trim() || title || ''
+      const payload: { title?: string; text?: string; url?: string } = { title }
+      if (isUrl) {
+        payload.url = text
+        if (messageBody) payload.text = messageBody
+      } else {
+        payload.text = shareText || text
+      }
+      await navigator.share(payload)
       return true
     } catch (e: any) {
       // User cancelled — they probably don't want copy either
