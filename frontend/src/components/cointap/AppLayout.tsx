@@ -1,11 +1,12 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Home, Wallet, TrendingUp, Activity, Users,
-  LogOut, Menu, X, Settings, User, ChevronRight, Shield,
+  LogOut, Menu, X, Settings, User, ChevronRight, Shield, Download,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Logo } from './Logo'
 import { store, useStore } from '@/lib/cointap-store'
+import { usePwaInstall } from '@/lib/usePwaInstall'
 
 const nav = [
   { to: '/dashboard', label: 'Overview', icon: Home },
@@ -20,6 +21,7 @@ export function AppLayout() {
   const location = useLocation()
   const user = useStore((s) => s.user)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const { canInstall, install } = usePwaInstall()
 
   useEffect(() => {
     if (!user) navigate('/login')
@@ -236,6 +238,23 @@ export function AppLayout() {
               </Link>
             )
           })}
+
+          {/* Install App — only when actually installable */}
+          {canInstall && (
+            <button
+              onClick={() => { install(); setDrawerOpen(false) }}
+              className="w-full text-left flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]"
+              style={{
+                background: 'rgba(247,147,26,0.08)',
+                color: 'var(--primary)',
+                border: '1px solid rgba(247,147,26,0.18)',
+              }}>
+              <Download className="w-5 h-5" />
+              <span className="flex-1">Install App</span>
+              <span className="text-[10px] uppercase tracking-wider"
+                style={{ color: 'var(--muted-foreground)' }}>Free</span>
+            </button>
+          )}
 
           {/* Account section */}
           <div className="text-[10px] uppercase tracking-widest font-bold px-3 mt-6 mb-2"

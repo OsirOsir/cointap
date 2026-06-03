@@ -1,45 +1,24 @@
 /**
- * PwaPrompts — two small banners managed in one file:
+ * PwaPrompts — install + update banners.
  *
- *  1. <InstallPrompt /> — shows after the browser fires beforeinstallprompt
- *     (Android Chrome / Edge). For iOS Safari, shows a manual instruction
- *     banner since iOS doesn't support beforeinstallprompt.
+ *  1. <InstallPrompt /> — auto-shown bottom-right after delay on platforms
+ *     that fire beforeinstallprompt. Also listens for IOS_TIP_EVENT to pop
+ *     up the iOS instruction banner when user taps "Install" in the nav.
  *
- *  2. <UpdatePrompt /> — shows when the service worker tells us a new
- *     version is waiting. Tapping "Update" tells the SW to skipWaiting()
- *     and reloads.
+ *  2. <UpdatePrompt /> — shown when service worker reports a new version.
  *
- * Both are tiny, dismissable, persisted to localStorage so they don't nag.
- * Rendered globally in App.tsx alongside the chat widget.
+ * Both are dismissable; install banner is persisted to localStorage so it
+ * doesn't keep auto-popping after dismiss.
  */
 import { useEffect, useState } from 'react'
 import { Download, X, RefreshCw, Share } from 'lucide-react'
 import { UPDATE_EVENT_NAME } from '@/lib/registerSW'
-
-// ────────────────────────────────────────────────────────────────
-// Install prompt
-// ────────────────────────────────────────────────────────────────
+import { usePwaInstall, IOS_TIP_EVENT } from '@/lib/usePwaInstall'
 
 const INSTALL_DISMISSED_KEY = 'cointap_pwa_install_dismissed'
 const INSTALL_DISMISSED_DAYS = 14
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
-
-function isIos(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream
-}
-
-function isStandalone(): boolean {
-  if (typeof window === 'undefined') return false
-  return window.matchMedia('(display-mode: standalone)').matches ||
-         (window.navigator as any).standalone === true
-}
-
-function dismissed(): boolean {
+function autoBannerDismissed(): boolean {
   try {
     const at = localStorage.getItem(INSTALL_DISMISSED_KEY)
     if (!at) return false
@@ -53,61 +32,40 @@ function rememberDismiss() {
 }
 
 export function InstallPrompt() {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
-  const [show, setShow] = useState(false)
-  const [showIosTip, setShowIosTip] = useState(false)
+  const { canInstall, isIos, install } = usePwaInstall()
+  const [showAuto, setShowAuto] = useState(false)
+  const [showIosManually, setShowIosManually] = useState(false)
 
+  // AUTO-POP: after delay if user hasn't recently dismissed.
   useEffect(() => {
-    if (isStandalone() || dismissed()) return
+    if (!canInstall) return
+    if (autoBannerDismissed()) return
+    const delay = isIos ? 6000 : 4000
+    const t = window.setTimeout(() => setShowAuto(true), delay)
+    return () => clearTimeout(t)
+  }, [canInstall, isIos])
 
-    // Android/Chrome path: capture the install event
-    const onPrompt = (e: Event) => {
-      e.preventDefault()
-      setDeferred(e as BeforeInstallPromptEvent)
-      // Slight delay so the banner doesn't pop in instantly on every visit
-      setTimeout(() => setShow(true), 4000)
-    }
-    window.addEventListener('beforeinstallprompt', onPrompt)
-
-    // iOS path: no event fires, so show a manual tip after a delay if iOS
-    let iosTimer: number | undefined
-    if (isIos()) {
-      iosTimer = window.setTimeout(() => setShowIosTip(true), 6000)
-    }
-
-    // If installed, hide prompt
-    const onInstalled = () => { setShow(false); setShowIosTip(false); rememberDismiss() }
-    window.addEventListener('appinstalled', onInstalled)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onPrompt)
-      window.removeEventListener('appinstalled', onInstalled)
-      if (iosTimer) clearTimeout(iosTimer)
-    }
+  // MANUAL POP: when nav button is tapped on iOS, show instruction banner
+  // even if previously dismissed (user just asked for it).
+  useEffect(() => {
+    const onTap = () => setShowIosManually(true)
+    window.addEventListener(IOS_TIP_EVENT, onTap)
+    return () => window.removeEventListener(IOS_TIP_EVENT, onTap)
   }, [])
 
-  async function install() {
-    if (!deferred) return
-    await deferred.prompt()
-    const choice = await deferred.userChoice
-    if (choice.outcome === 'accepted') {
-      setShow(false)
-    } else {
-      // Dismissed — remember for 2 weeks
-      rememberDismiss()
-      setShow(false)
-    }
-    setDeferred(null)
+  async function handleInstall() {
+    await install()
+    setShowAuto(false)
   }
 
   function dismiss() {
     rememberDismiss()
-    setShow(false)
-    setShowIosTip(false)
+    setShowAuto(false)
+    setShowIosManually(false)
   }
 
   // ── Android/Chrome banner ──
-  if (show && deferred) {
+  if (showAuto && !isIos) {
     return (
       <div className="fixed z-40 left-3 right-3 sm:left-auto sm:right-5 sm:w-[360px]"
         style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}>
@@ -127,7 +85,7 @@ export function InstallPrompt() {
               Add to home screen for quick access — works offline too.
             </div>
           </div>
-          <button onClick={install}
+          <button onClick={handleInstall}
             className="px-3 py-2 rounded-lg text-xs font-bold flex-shrink-0"
             style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
             Install
@@ -142,8 +100,8 @@ export function InstallPrompt() {
     )
   }
 
-  // ── iOS manual instruction banner ──
-  if (showIosTip) {
+  // ── iOS instruction banner — shown by auto-pop OR by nav-tap ──
+  if (isIos && (showAuto || showIosManually)) {
     return (
       <div className="fixed z-40 left-3 right-3 sm:left-auto sm:right-5 sm:w-[360px]"
         style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}>
@@ -180,7 +138,7 @@ export function InstallPrompt() {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Update prompt — shown when a new SW is waiting
+// Update prompt
 // ────────────────────────────────────────────────────────────────
 
 export function UpdatePrompt() {
@@ -200,7 +158,6 @@ export function UpdatePrompt() {
   function applyUpdate() {
     if (reg?.waiting) {
       reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-      // controllerchange in registerSW.ts will reload the page
     } else {
       window.location.reload()
     }
