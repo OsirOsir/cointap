@@ -6,12 +6,13 @@ import { UsdtBadge } from '@/lib/usdt'
 import { shareOrCopy } from '@/lib/share'
 
 type Referral = {
-  id: number
+  id: number | null
   referred_user_id: number
   referred_name?: string
   referred_email?: string
   bonus_amount: number
   status: string
+  has_invested?: boolean
   created_at: string
 }
 
@@ -203,24 +204,44 @@ export function Referrals() {
           </div>
         ) : (
           <div className="space-y-2">
-            {data.referrals.map((r) => (
-              <div key={r.id} className="flex items-center justify-between p-3 rounded-xl"
-                style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                <div>
-                  <div className="text-sm font-medium text-white">{r.referred_name || `User #${r.referred_user_id}`}</div>
-                  <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                    {new Date(r.created_at).toLocaleDateString()}
+            {data.referrals.map((r, idx) => {
+              const invested = r.has_invested !== false && r.status === 'credited'
+              const isSignupOnly = r.has_invested === false || r.status === 'signed_up'
+              return (
+                <div key={r.id ?? `signup-${r.referred_user_id}-${idx}`}
+                  className="flex items-center justify-between p-3 rounded-xl"
+                  style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">
+                      {r.referred_name || `User #${r.referred_user_id}`}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-3">
+                    {invested ? (
+                      <>
+                        <div className="text-sm font-mono text-green-400">+{formatKsh(r.bonus_amount)}</div>
+                        <div className="text-[10px] uppercase font-bold text-green-400">
+                          credited
+                        </div>
+                      </>
+                    ) : isSignupOnly ? (
+                      <div className="text-[10px] uppercase font-bold tracking-wider"
+                        style={{ color: 'var(--muted-foreground)' }}>
+                        Signed up · awaiting first invest
+                      </div>
+                    ) : (
+                      <div className="text-[10px] uppercase font-bold tracking-wider"
+                        style={{ color: '#fbbf24' }}>
+                        {r.status}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-mono text-green-400">+{formatKsh(r.bonus_amount)}</div>
-                  <div className="text-[10px] uppercase font-bold"
-                    style={{ color: r.status === 'credited' ? '#4ade80' : '#fbbf24' }}>
-                    {r.status}
-                  </div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

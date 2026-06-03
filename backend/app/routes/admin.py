@@ -72,11 +72,13 @@ def list_users():
         d = u.to_dict()
         d["wallet"] = u.wallet.to_dict() if u.wallet else {}
         d["order_count"] = len(u.orders)
-        # Referral counts
+        # Referral counts:
+        #   total_referrals  = everyone who signed up with my code (invested or not)
+        #   active_referrals = subset who actually invested (have a Referral row)
         from ..models.referral import Referral
-        total_refs = Referral.query.filter_by(referrer_id=u.id).count()
         active_refs = Referral.query.filter_by(referrer_id=u.id, status="credited").count()
-        d["referral_count"] = total_refs
+        signup_refs = User.query.filter_by(promo_code=u.referral_code).count() if u.referral_code else 0
+        d["referral_count"] = signup_refs
         d["active_referral_count"] = active_refs
         users.append(d)
     return ok(users=users, total=result.total, pages=result.pages)
@@ -96,17 +98,41 @@ def get_user_detail(user_id: int):
     # All referrals this user has brought in
     refs = Referral.query.filter_by(referrer_id=user.id).all()
     referrals = []
+    referred_ids = set()
     for r in refs:
         if r.referred_user:
+            referred_ids.add(r.referred_user_id)
             referrals.append({
                 "id": r.id,
                 "referred_user_id": r.referred_user_id,
                 "referred_name": r.referred_user.full_name,
                 "referred_email": r.referred_user.email,
                 "status": r.status,
+                "has_invested": True,
                 "bonus_amount": float(r.bonus_amount),
                 "created_at": r.created_at.isoformat(),
             })
+
+    # Also include signups that haven't invested yet (no Referral row)
+    if user.referral_code:
+        signup_only = (
+            User.query
+            .filter(User.promo_code == user.referral_code)
+            .filter(~User.id.in_(referred_ids) if referred_ids else User.id.isnot(None))
+            .all()
+        )
+        for u in signup_only:
+            referrals.append({
+                "id": None,
+                "referred_user_id": u.id,
+                "referred_name": u.full_name,
+                "referred_email": u.email,
+                "status": "signed_up",
+                "has_invested": False,
+                "bonus_amount": 0,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            })
+
     d["referrals"] = referrals
     d["referral_count"] = len(referrals)
     d["active_referral_count"] = sum(1 for r in refs if r.status == "credited")
