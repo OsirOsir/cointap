@@ -1,0 +1,65 @@
+{
+  "name": "CoinTap — Deposit · Invest · Grow · Withdraw",
+  "short_name": "CoinTap",
+  "description": "Centralized investment platform with M-Pesa deposits, instant maturity returns, and live pool tracking.",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#f7931a",
+  "background_color": "#0a0e1a",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["finance", "business"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Wallet",
+      "short_name": "Wallet",
+      "description": "View your balance and transactions",
+      "url": "/wallet?source=pwa-shortcut",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Investment Plans",
+      "short_name": "Plans",
+      "description": "Browse and buy investment plans",
+      "url": "/plans?source=pwa-shortcut",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Refer & Earn",
+      "short_name": "Refer",
+      "description": "Invite friends and earn 3% bonus",
+      "url": "/referrals?source=pwa-shortcut",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
+}

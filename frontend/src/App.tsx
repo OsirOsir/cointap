@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { AppLayout } from '@/components/cointap/AppLayout'
 import { MaintenanceBanner } from '@/components/cointap/MaintenanceBanner'
 import { ChatWidget } from '@/components/cointap/ChatWidget'
+import { InstallPrompt, UpdatePrompt } from '@/components/cointap/PwaPrompts'
 import { Landing } from '@/pages/Landing'
 import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
@@ -62,6 +63,8 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ChatWidget />
+      <InstallPrompt />
+      <UpdatePrompt />
     </BrowserRouter>
   )
 }
