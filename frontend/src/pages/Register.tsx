@@ -9,10 +9,15 @@ import { AlertTriangle } from 'lucide-react'
 export function Register() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  // Track whether the referral code came from the URL (?ref=...) — if so, we
+  // lock the field so the user can't accidentally clear or modify it during
+  // registration. This protects the referrer's credit.
+  const refFromUrl = (searchParams.get('ref') || '').trim().toUpperCase()
   const [f, setF] = useState({
     full_name: '', email: '', phone: '', password: '', confirm: '',
-    ref: searchParams.get('ref') || '',
+    ref: refFromUrl,
   })
+  const refLocked = refFromUrl.length > 0
   const [error, setError] = useState('')
   const [captchaOK, setCaptchaOK] = useState(false)
   const [agreed, setAgreed] = useState(false)
@@ -99,7 +104,44 @@ export function Register() {
           </div>
         )}
 
-        <Field label="Referral code (optional)" value={f.ref} onChange={up('ref')} placeholder="CTXXXXX" />
+        {/* Referral code — locked when supplied via URL to protect referrer credit */}
+        {refLocked ? (
+          <div className="block mb-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs tracking-wider uppercase"
+                style={{ color: 'var(--muted-foreground)' }}>
+                Referred by a Friend
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>
+                🔒 Locked
+              </span>
+            </div>
+            <div className="relative">
+              <input value={f.ref} readOnly
+                aria-label="Referral code (locked)"
+                tabIndex={-1}
+                className="w-full px-4 py-3 rounded-xl text-white font-mono tracking-widest font-bold pointer-events-none select-none"
+                style={{
+                  background: 'rgba(247,147,26,0.08)',
+                  border: '1px solid rgba(247,147,26,0.3)',
+                  fontSize: '0.95rem',
+                  letterSpacing: '0.15em',
+                  textAlign: 'center',
+                }} />
+              {/* Hidden field that submits with the form — readOnly works but
+                  belt-and-suspenders in case the visible input is intercepted */}
+              <input type="hidden" name="ref" value={f.ref} />
+            </div>
+            <div className="text-[10px] mt-1.5 flex items-center gap-1.5"
+              style={{ color: 'var(--muted-foreground)' }}>
+              <span>✓ Your friend will be credited when you start investing.</span>
+            </div>
+          </div>
+        ) : (
+          <Field label="Referral code (optional)" value={f.ref} onChange={up('ref')}
+            placeholder="CTXXXXX" maxLength={10} />
+        )}
 
         <div className="mb-3">
           <Captcha onValid={() => setCaptchaOK(true)} onInvalid={() => setCaptchaOK(false)} />
