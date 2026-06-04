@@ -26,14 +26,14 @@ import re
 import time
 import uuid
 from collections import defaultdict, deque
-from flask import Blueprint, request, send_file, current_app, abort
+from flask import Blueprint, request, send_file, current_app
 from flask_jwt_extended import jwt_required
 from werkzeug.utils import secure_filename
 from ..extensions import db
 from ..models.job_application import JobApplication
 from ..models.settings import get_settings
 from ..models.user import User
-from ..utils.helpers import ok, err, current_user
+from ..utils.helpers import ok, err, admin_required
 from datetime import datetime, timezone, timedelta
 
 careers_bp = Blueprint("careers", __name__, url_prefix="/api/careers")
@@ -276,17 +276,10 @@ def apply():
 # ADMIN ENDPOINTS
 # ────────────────────────────────────────────────────────────────────
 
-def _require_admin():
-    u = current_user()
-    if not u or not u.is_admin:
-        abort(403)
-    return u
-
-
 @admin_careers_bp.get("/")
 @jwt_required()
+@admin_required
 def list_applications():
-    _require_admin()
     status = request.args.get("status", "").strip()
     search = request.args.get("q", "").strip()
     page = max(1, int(request.args.get("page", 1)))
@@ -331,16 +324,16 @@ def list_applications():
 
 @admin_careers_bp.get("/<int:app_id>")
 @jwt_required()
+@admin_required
 def application_detail(app_id):
-    _require_admin()
     app_row = JobApplication.query.get_or_404(app_id)
     return ok(application=app_row.to_dict(include_admin=True))
 
 
 @admin_careers_bp.put("/<int:app_id>")
 @jwt_required()
+@admin_required
 def update_application(app_id):
-    _require_admin()
     app_row = JobApplication.query.get_or_404(app_id)
     data = request.get_json(silent=True) or {}
 
@@ -359,8 +352,8 @@ def update_application(app_id):
 
 @admin_careers_bp.delete("/<int:app_id>")
 @jwt_required()
+@admin_required
 def delete_application(app_id):
-    _require_admin()
     app_row = JobApplication.query.get_or_404(app_id)
     # Best-effort: also delete the CV file
     if app_row.cv_filename:
@@ -377,8 +370,8 @@ def delete_application(app_id):
 
 @admin_careers_bp.get("/<int:app_id>/cv")
 @jwt_required()
+@admin_required
 def download_cv(app_id):
-    _require_admin()
     app_row = JobApplication.query.get_or_404(app_id)
     if not app_row.cv_filename:
         return err("No CV uploaded for this application.", 404)
