@@ -10,6 +10,7 @@ import {
 import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
 import { adminApi, adminChatApi, adminCareersApi } from '@/lib/api'
 import { QrGenerator } from '@/components/cointap/QrGenerator'
+import { ReferralBadge } from '@/components/cointap/ReferralBadge'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'chat' | 'careers' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
@@ -394,8 +395,16 @@ function UsersTab() {
                     </div>
                     <div className="text-right">
                       <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Refs</div>
-                      <div className="font-mono font-bold text-white">
-                        {refCount} <span className="text-[10px] text-green-400">({activeRefs} active)</span>
+                      <div className="font-mono font-bold text-white flex items-center gap-1.5 justify-end">
+                        {(u as any).badge?.tier && (
+                          <ReferralBadge data={(u as any).badge} size="sm" />
+                        )}
+                        {refCount === 0 && !(u as any).badge?.tier && (
+                          <span>{refCount} <span className="text-[10px] text-green-400">({activeRefs} active)</span></span>
+                        )}
+                        {refCount > 0 && (
+                          <span className="text-[10px] text-green-400">{activeRefs} inv</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2452,6 +2461,7 @@ function SettingsTab() {
     { key: 'registrations_open', label: 'Registrations Open', description: 'Allow new user signups' },
     { key: 'share_sale_open', label: 'Share Sale Window', description: 'Allow share purchases (buy orders)' },
     { key: 'careers_open', label: 'Job Applications Open', description: 'When OFF, /apply shows "closed" message' },
+    { key: 'milestone_counts_signups', label: 'Milestone Counts Signups', description: 'ON: milestone awards on signup count (growth mode). OFF: counts only invested referrals (default).', risky: true },
     { key: 'maintenance_mode', label: 'Maintenance Mode', description: 'Show site-wide banner + block deposits / withdrawals / buys / registration', risky: true },
   ]
 

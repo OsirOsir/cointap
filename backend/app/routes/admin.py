@@ -76,10 +76,12 @@ def list_users():
         #   total_referrals  = everyone who signed up with my code (invested or not)
         #   active_referrals = subset who actually invested (have a Referral row)
         from ..models.referral import Referral
+        from ..models.referral_badge import compute_badge
         active_refs = Referral.query.filter_by(referrer_id=u.id, status="credited").count()
         signup_refs = User.query.filter_by(promo_code=u.referral_code).count() if u.referral_code else 0
         d["referral_count"] = signup_refs
         d["active_referral_count"] = active_refs
+        d["badge"] = compute_badge(u.id, u.referral_code)
         users.append(d)
     return ok(users=users, total=result.total, pages=result.pages)
 
@@ -475,6 +477,7 @@ def admin_update_settings():
         "share_sale_open",
         "maintenance_mode",
         "careers_open",
+        "milestone_counts_signups",
     ):
         if field in d:
             setattr(s, field, bool(d[field]))

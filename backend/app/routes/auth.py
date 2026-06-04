@@ -79,7 +79,12 @@ def me():
     user = current_user()
     if not user:
         return err("User not found", 404)
-    return ok(user=user.to_dict())
+    # Include badge tier so the frontend can show it on Profile/Dashboard
+    # without making a separate referrals call.
+    from ..models.referral_badge import compute_badge
+    user_dict = user.to_dict()
+    user_dict["badge"] = compute_badge(user.id, user.referral_code)
+    return ok(user=user_dict)
 
 
 @auth_bp.put("/me")

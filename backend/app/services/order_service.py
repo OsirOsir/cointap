@@ -176,6 +176,13 @@ def _maybe_credit_milestone_bonus(referrer):
     awarded the milestone bonus before, credit them.
 
     One-shot per user — tracked by user.milestone_bonus_at.
+
+    Counts:
+      - When settings.milestone_counts_signups is True: counts ALL users who
+        signed up using this referrer's code (active users, regardless of
+        whether they've invested). Used during early growth campaigns.
+      - When False (default): counts only "credited" Referral rows — users
+        who actually invested. The original, fraud-resistant behaviour.
     """
     from ..models.user import User
     from ..models.settings import get_settings
@@ -189,11 +196,21 @@ def _maybe_credit_milestone_bonus(referrer):
     if threshold <= 0 or amount <= 0:
         return
 
-    credited_count = Referral.query.filter_by(
-        referrer_id=referrer.id, status="credited"
-    ).count()
+    if settings.milestone_counts_signups:
+        count = (
+            User.query
+            .filter(User.promo_code == referrer.referral_code)
+            .filter(User.is_active == True)
+            .count()
+        )
+        label = "signups"
+    else:
+        count = Referral.query.filter_by(
+            referrer_id=referrer.id, status="credited"
+        ).count()
+        label = "successful referrals"
 
-    if credited_count < threshold:
+    if count < threshold:
         return
 
     # Award it
@@ -202,7 +219,7 @@ def _maybe_credit_milestone_bonus(referrer):
         wallet,
         amount,
         tx_type="referral_bonus",
-        description=f"🎁 Milestone bonus — {threshold} successful referrals",
+        description=f"🎁 Milestone bonus — {threshold} {label}",
         reference=_ref("MILE"),
     )
     referrer.milestone_bonus_at = datetime.now(timezone.utc)

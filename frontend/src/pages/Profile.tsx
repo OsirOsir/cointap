@@ -1,12 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { User as UserIcon, Mail, Phone, Lock, Check, Copy, Shield, AlertCircle, Save, Smartphone, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { store, useStore } from '@/lib/cointap-store'
 import { PasswordStrength, getPasswordStrength, TwoFactorInput } from '@/components/cointap/Security'
 import { shareOrCopy } from '@/lib/share'
+import { ReferralBadge, type BadgeData } from '@/components/cointap/ReferralBadge'
+import { http } from '@/lib/api'
 
 export function Profile() {
   const user = useStore((s) => s.user)
+  const [badge, setBadge] = useState<BadgeData | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    http.get<{ ok: boolean; user: { badge?: BadgeData } }>('/auth/me')
+      .then((res) => { if (!cancelled && res.user?.badge) setBadge(res.user.badge) })
+      .catch(() => { /* keep null — section will gracefully hide */ })
+    return () => { cancelled = true }
+  }, [user?.email])
+
   if (!user) return null
 
   return (
@@ -34,6 +47,9 @@ export function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Referral badge — only shows when there's data to display */}
+      {badge && (badge.signup_count > 0 || badge.tier) && <ReferralBadge data={badge} size="lg" />}
 
       <PersonalInfoSection />
       <EmailVerificationSection />

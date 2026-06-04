@@ -32,6 +32,29 @@ def register_user(full_name: str, email: str, phone: str, password: str, promo_c
     wallet = Wallet(user_id=user.id)
     db.session.add(wallet)
     db.session.commit()
+
+    # When admin has enabled signup-only milestones, a new signup might push
+    # the referrer past the threshold immediately (before any investment).
+    # Fire the milestone check now — under standard (invested-only) settings
+    # this is a cheap no-op that exits early.
+    if user.promo_code:
+        try:
+            from ..models.settings import get_settings
+            settings = get_settings()
+            if settings.milestone_counts_signups:
+                referrer = User.query.filter_by(referral_code=user.promo_code).first()
+                if referrer:
+                    from .order_service import _maybe_credit_milestone_bonus
+                    _maybe_credit_milestone_bonus(referrer)
+                    db.session.commit()
+        except Exception:
+            # Don't let a bonus calculation failure break the signup flow.
+            # The user is registered; bonus will fire next time the order
+            # service runs for this referrer.
+            db.session.rollback()
+            db.session.add(user)   # keep the user we just created
+            db.session.commit()
+
     return {"ok": True, "user": user}
 
 

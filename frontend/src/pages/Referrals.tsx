@@ -4,6 +4,7 @@ import { formatKsh, useStore } from '@/lib/cointap-store'
 import { http } from '@/lib/api'
 import { UsdtBadge } from '@/lib/usdt'
 import { shareOrCopy } from '@/lib/share'
+import { ReferralBadge, type BadgeData } from '@/components/cointap/ReferralBadge'
 
 type Referral = {
   id: number | null
@@ -24,9 +25,11 @@ type ApiResponse = {
   credited_referrals: number
   pending_referrals: number
   total_earned: number
+  badge?: BadgeData
   milestone: {
     threshold: number
     amount: number
+    counts_signups?: boolean
     achieved: boolean
     achieved_at: string | null
     progress: number
@@ -107,6 +110,9 @@ export function Referrals() {
           </div>
         </div>
       </div>
+
+      {/* Referral badge — social-proof tier (Bronze / Silver / Gold / Diamond / Legend) */}
+      {data?.badge && <ReferralBadge data={data.badge} size="lg" />}
 
       {/* Milestone progress */}
       {milestoneEnabled && (

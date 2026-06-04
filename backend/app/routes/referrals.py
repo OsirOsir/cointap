@@ -62,21 +62,37 @@ def list_referrals():
     threshold = int(settings.referral_milestone_threshold or 0)
     milestone_amount = float(settings.referral_milestone_amount or 0)
 
+    # Badge tier — based on signup count (motivating). Uses signup_count
+    # whether or not milestone_counts_signups is on; the badge is purely
+    # cosmetic social proof.
+    from ..models.referral_badge import compute_badge
+    badge_data = compute_badge(user.id, user.referral_code)
+
+    # When admin has enabled signup-counting milestones, the progress bar
+    # should use total signups (including non-investors).
+    milestone_progress_count = (
+        badge_data["signup_count"]
+        if settings.milestone_counts_signups
+        else credited_count
+    )
+
     return ok(
         referrals=referral_list,
         referral_code=user.referral_code,
         total_referrals=total_referrals,             # signed up + invested
-        active_referrals=credited_count,             # NEW: invested count
-        credited_referrals=credited_count,           # kept for backwards compat
+        active_referrals=credited_count,             # invested count
+        credited_referrals=credited_count,           # backwards compat
         pending_referrals=pending_count + len(pending_signups),
-        signup_only_referrals=len(pending_signups),  # NEW: signed up but not invested
+        signup_only_referrals=len(pending_signups),
         total_earned=total_earned,
+        badge=badge_data,                            # tier + counts
         milestone={
             "threshold": threshold,
             "amount": milestone_amount,
+            "counts_signups": bool(settings.milestone_counts_signups),
             "achieved": user.milestone_bonus_at is not None,
             "achieved_at": user.milestone_bonus_at.isoformat() if user.milestone_bonus_at else None,
-            "progress": min(credited_count, threshold) if threshold > 0 else 0,
-            "remaining": max(0, threshold - credited_count) if threshold > 0 and user.milestone_bonus_at is None else 0,
+            "progress": min(milestone_progress_count, threshold) if threshold > 0 else 0,
+            "remaining": max(0, threshold - milestone_progress_count) if threshold > 0 and user.milestone_bonus_at is None else 0,
         },
     )

@@ -22,6 +22,12 @@ class PlatformSettings(db.Model):
     # Careers — when False, /apply shows "applications closed" instead of form
     careers_open = db.Column(db.Boolean, default=True, nullable=False)
 
+    # When True, milestone bonus counts ALL signups using the user's referral
+    # code (regardless of whether they've invested). Designed for early growth
+    # campaigns. Admin can flip OFF later to revert to standard "invested-only"
+    # counting. Flipping does NOT retroactively reverse already-paid bonuses.
+    milestone_counts_signups = db.Column(db.Boolean, default=False, nullable=False)
+
     # Referral milestone bonus — pays user a one-time bonus when they reach
     # a threshold of credited (real-purchase-backed) referrals.
     referral_milestone_threshold = db.Column(db.Integer, default=10, nullable=False)
@@ -48,6 +54,7 @@ class PlatformSettings(db.Model):
             "maintenance_mode": bool(self.maintenance_mode),
             "maintenance_message": self.maintenance_message or "",
             "careers_open": bool(self.careers_open),
+            "milestone_counts_signups": bool(self.milestone_counts_signups),
             "referral_milestone_threshold": int(self.referral_milestone_threshold or 0),
             "referral_milestone_amount": float(self.referral_milestone_amount or 0),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
