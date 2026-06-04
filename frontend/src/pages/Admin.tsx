@@ -5,10 +5,11 @@ import {
   ScrollText, Wallet, FileText, Search, Edit2, Trash2, UserX, UserCheck, Plus,
   Check, X, AlertTriangle, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
   Activity, DollarSign, Clock, ArrowLeft, Home, RefreshCw, MessageCircle, Send,
-  Briefcase, Download, MapPin, Phone, Mail, GraduationCap,
+  Briefcase, Download, MapPin, Phone, Mail, GraduationCap, Palette,
 } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
 import { adminApi, adminChatApi, adminCareersApi } from '@/lib/api'
+import { QrGenerator } from '@/components/cointap/QrGenerator'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'chat' | 'careers' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
@@ -1993,6 +1994,7 @@ function CareersTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Application | null>(null)
+  const [showQr, setShowQr] = useState(false)
 
   async function load() {
     setLoading(true); setError('')
@@ -2060,12 +2062,25 @@ function CareersTab() {
             </span>
           )}
         </h2>
-        <button onClick={load}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-          style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)' }}>
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowQr(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5"
+            style={{
+              background: 'rgba(247,147,26,0.12)',
+              color: 'var(--primary)',
+              border: '1px solid rgba(247,147,26,0.3)',
+            }}>
+            <Palette className="w-3.5 h-3.5" /> QR Code
+          </button>
+          <button onClick={load}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)' }}>
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        </div>
       </div>
+
+      {showQr && <QrGenerator onClose={() => setShowQr(false)} />}
 
       {/* Filter pills */}
       <div className="flex gap-2 overflow-x-auto pb-2">
