@@ -19,6 +19,8 @@ class PlatformSettings(db.Model):
     registrations_open = db.Column(db.Boolean, default=True, nullable=False)
     share_sale_open = db.Column(db.Boolean, default=True, nullable=False)
     maintenance_mode = db.Column(db.Boolean, default=False, nullable=False)
+    # Careers — when False, /apply shows "applications closed" instead of form
+    careers_open = db.Column(db.Boolean, default=True, nullable=False)
 
     # Referral milestone bonus — pays user a one-time bonus when they reach
     # a threshold of credited (real-purchase-backed) referrals.
@@ -45,6 +47,7 @@ class PlatformSettings(db.Model):
             "share_sale_open": bool(self.share_sale_open),
             "maintenance_mode": bool(self.maintenance_mode),
             "maintenance_message": self.maintenance_message or "",
+            "careers_open": bool(self.careers_open),
             "referral_milestone_threshold": int(self.referral_milestone_threshold or 0),
             "referral_milestone_amount": float(self.referral_milestone_amount or 0),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

@@ -17,6 +17,7 @@ import { Withdraw } from '@/pages/Withdraw'
 import { Admin } from '@/pages/Admin'
 import { Profile } from '@/pages/Profile'
 import { VerifyEmail } from '@/pages/VerifyEmail'
+import { Apply } from '@/pages/Apply'
 import { store } from '@/lib/cointap-store'
 
 export default function App() {
@@ -48,6 +49,9 @@ export default function App() {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/withdraw" element={<Withdraw />} />
         <Route path="/admin" element={<Admin />} />
+        {/* Careers — public, mobile-first form. /careers redirects to /apply. */}
+        <Route path="/apply" element={<Apply />} />
+        <Route path="/careers" element={<Navigate to="/apply" replace />} />
 
         {/* Protected (layout with sidebar) */}
         <Route element={<AppLayout />}>

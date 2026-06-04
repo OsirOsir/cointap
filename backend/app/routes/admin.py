@@ -474,6 +474,7 @@ def admin_update_settings():
         "registrations_open",
         "share_sale_open",
         "maintenance_mode",
+        "careers_open",
     ):
         if field in d:
             setattr(s, field, bool(d[field]))

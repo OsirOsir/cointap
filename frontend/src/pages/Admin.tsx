@@ -5,12 +5,13 @@ import {
   ScrollText, Wallet, FileText, Search, Edit2, Trash2, UserX, UserCheck, Plus,
   Check, X, AlertTriangle, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
   Activity, DollarSign, Clock, ArrowLeft, Home, RefreshCw, MessageCircle, Send,
+  Briefcase, Download, MapPin, Phone, Mail, GraduationCap,
 } from 'lucide-react'
 import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcement } from '@/lib/cointap-store'
-import { adminApi, adminChatApi } from '@/lib/api'
+import { adminApi, adminChatApi, adminCareersApi } from '@/lib/api'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
-type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'chat' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
+type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'chat' | 'careers' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'overview', label: 'Overview', icon: BarChart3 },
@@ -20,6 +21,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'orders', label: 'Orders', icon: FileText },
   { key: 'withdrawals', label: 'Withdrawals', icon: Wallet },
   { key: 'chat', label: 'Chat', icon: MessageCircle },
+  { key: 'careers', label: 'Careers', icon: Briefcase },
   { key: 'analytics', label: 'Analytics', icon: TrendingUp },
   { key: 'security', label: 'Security', icon: Shield },
   { key: 'announcements', label: 'Announcements', icon: Megaphone },
@@ -124,6 +126,7 @@ export function Admin() {
         {tab === 'orders' && <OrdersTab />}
         {tab === 'withdrawals' && <WithdrawalsTab />}
         {tab === 'chat' && <ChatTab />}
+        {tab === 'careers' && <CareersTab />}
         {tab === 'analytics' && <AnalyticsTab />}
         {tab === 'security' && <SecurityTab />}
         {tab === 'announcements' && <AnnouncementsTab />}
@@ -1943,6 +1946,429 @@ function AnnouncementEditor({
   )
 }
 
+// ─── CAREERS (job applications) ────────────────────────────
+type Application = {
+  id: number
+  full_name: string
+  whatsapp: string
+  email: string
+  county: string
+  school: string
+  course: string
+  year_of_study: string
+  available_remote: string
+  has_experience: string
+  why_interested: string
+  pitch_cointap: string
+  position: string
+  status: string
+  admin_notes: string | null
+  has_cv?: boolean
+  cv_filename?: string | null
+  cv_size_bytes?: number | null
+  referrer?: string | null
+  ip_address?: string | null
+  created_at: string
+  updated_at?: string
+}
+
+const APP_STATUS_OPTIONS: { key: string; label: string; color: string }[] = [
+  { key: 'new', label: 'New', color: '#3b82f6' },
+  { key: 'reviewed', label: 'Reviewed', color: '#a78bfa' },
+  { key: 'shortlisted', label: 'Shortlisted', color: '#fbbf24' },
+  { key: 'contacted', label: 'Contacted', color: '#fb923c' },
+  { key: 'hired', label: 'Hired', color: '#4ade80' },
+  { key: 'rejected', label: 'Rejected', color: '#ef4444' },
+]
+
+function statusMeta(key: string) {
+  return APP_STATUS_OPTIONS.find((s) => s.key === key) || { key, label: key, color: '#888' }
+}
+
+function CareersTab() {
+  const [filter, setFilter] = useState<string>('all')
+  const [search, setSearch] = useState('')
+  const [apps, setApps] = useState<Application[]>([])
+  const [stats, setStats] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState<Application | null>(null)
+
+  async function load() {
+    setLoading(true); setError('')
+    try {
+      const data = await adminCareersApi.list(filter, search)
+      setApps(data.applications || [])
+      setStats(data.stats || {})
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load applications')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [filter])
+  useEffect(() => {
+    const t = setTimeout(load, 300)   // debounce search
+    return () => clearTimeout(t)
+  }, [search])
+
+  async function changeStatus(app: Application, newStatus: string) {
+    try {
+      const data = await adminCareersApi.update(app.id, { status: newStatus })
+      setApps((prev) => prev.map((a) => a.id === app.id ? data.application : a))
+      if (selected?.id === app.id) setSelected(data.application)
+      load()  // refresh stats
+    } catch (e: any) {
+      alert(e?.message || 'Could not update status')
+    }
+  }
+
+  async function saveNotes(app: Application, notes: string) {
+    try {
+      const data = await adminCareersApi.update(app.id, { admin_notes: notes })
+      setSelected(data.application)
+      setApps((prev) => prev.map((a) => a.id === app.id ? data.application : a))
+    } catch (e: any) {
+      alert(e?.message || 'Could not save notes')
+    }
+  }
+
+  async function deleteApp(app: Application) {
+    if (!confirm(`Delete application from ${app.full_name}? This cannot be undone.`)) return
+    try {
+      await adminCareersApi.remove(app.id)
+      setApps((prev) => prev.filter((a) => a.id !== app.id))
+      if (selected?.id === app.id) setSelected(null)
+      load()
+    } catch (e: any) {
+      alert(e?.message || 'Could not delete')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header + stats */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <Briefcase className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+          Job Applications
+          {stats.total > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold"
+              style={{ background: 'rgba(247,147,26,0.15)', color: 'var(--primary)' }}>
+              {stats.total}
+            </span>
+          )}
+        </h2>
+        <button onClick={load}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+          style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)' }}>
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </button>
+      </div>
+
+      {/* Filter pills */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        <FilterPill label="All" count={stats.total || 0}
+          active={filter === 'all'} onClick={() => setFilter('all')} />
+        {APP_STATUS_OPTIONS.map((s) => (
+          <FilterPill key={s.key} label={s.label} count={stats[s.key] || 0} color={s.color}
+            active={filter === s.key} onClick={() => setFilter(s.key)} />
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+          style={{ color: 'var(--muted-foreground)' }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, email, school, county…"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm text-white"
+          style={{ background: 'rgba(30,37,53,0.6)', border: '1px solid rgba(255,255,255,0.1)' }} />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="p-3 rounded-xl flex items-center gap-2 text-sm text-red-400"
+          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <AlertTriangle className="w-4 h-4" /> {error}
+        </div>
+      )}
+
+      {/* Two-pane layout: list + detail */}
+      <div className="grid lg:grid-cols-[1fr_1.4fr] gap-3">
+        {/* List */}
+        <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+          {loading ? (
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+              Loading applications…
+            </div>
+          ) : apps.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+              {filter === 'all' ? 'No applications yet.' : `No ${filter} applications.`}
+            </div>
+          ) : (
+            apps.map((a) => (
+              <button key={a.id} onClick={() => setSelected(a)}
+                className="w-full text-left p-3 rounded-xl transition-all"
+                style={selected?.id === a.id ? {
+                  background: 'rgba(247,147,26,0.1)',
+                  border: '1px solid rgba(247,147,26,0.3)',
+                } : {
+                  background: 'rgba(30,37,53,0.5)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                }}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-white truncate">{a.full_name}</div>
+                    <div className="text-[11px] mt-0.5 flex items-center gap-1.5"
+                      style={{ color: 'var(--muted-foreground)' }}>
+                      <GraduationCap className="w-3 h-3" />
+                      <span className="truncate">{a.school}</span>
+                    </div>
+                  </div>
+                  <StatusBadge status={a.status} />
+                </div>
+                <div className="text-[10px] mt-1.5" style={{ color: 'var(--muted-foreground)' }}>
+                  {new Date(a.created_at).toLocaleString()}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Detail */}
+        <div>
+          {selected ? (
+            <ApplicationDetail app={selected}
+              onStatusChange={(s) => changeStatus(selected, s)}
+              onSaveNotes={(n) => saveNotes(selected, n)}
+              onDelete={() => deleteApp(selected)} />
+          ) : (
+            <div className="rounded-2xl p-8 text-center"
+              style={{ background: 'rgba(30,37,53,0.3)', border: '1px dashed rgba(255,255,255,0.08)' }}>
+              <Briefcase className="w-10 h-10 mx-auto opacity-30" style={{ color: 'var(--primary)' }} />
+              <p className="text-sm mt-3" style={{ color: 'var(--muted-foreground)' }}>
+                Select an application to view details
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FilterPill({ label, count, color, active, onClick }: {
+  label: string; count: number; color?: string; active: boolean; onClick: () => void
+}) {
+  return (
+    <button onClick={onClick}
+      className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-2 transition-all"
+      style={active ? {
+        background: color || 'var(--gradient-gold)',
+        color: color ? 'white' : 'var(--primary-foreground)',
+      } : {
+        background: 'rgba(255,255,255,0.04)',
+        color: 'rgba(255,255,255,0.7)',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}>
+      <span>{label}</span>
+      {count > 0 && (
+        <span className="px-1.5 py-0 rounded-full text-[10px]"
+          style={{
+            background: active ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
+          }}>
+          {count}
+        </span>
+      )}
+    </button>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const meta = statusMeta(status)
+  return (
+    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex-shrink-0"
+      style={{ background: `${meta.color}25`, color: meta.color }}>
+      {meta.label}
+    </span>
+  )
+}
+
+function ApplicationDetail({ app, onStatusChange, onSaveNotes, onDelete }: {
+  app: Application
+  onStatusChange: (s: string) => void
+  onSaveNotes: (n: string) => void
+  onDelete: () => void
+}) {
+  const [notes, setNotes] = useState(app.admin_notes || '')
+  const [notesDirty, setNotesDirty] = useState(false)
+
+  useEffect(() => {
+    setNotes(app.admin_notes || '')
+    setNotesDirty(false)
+  }, [app.id, app.admin_notes])
+
+  return (
+    <div className="rounded-2xl p-4 sm:p-5 space-y-4"
+      style={{ background: 'rgba(30,37,53,0.5)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lg font-bold text-white">{app.full_name}</h3>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+            Applied {new Date(app.created_at).toLocaleString()}
+          </div>
+        </div>
+        <button onClick={onDelete} aria-label="Delete"
+          className="p-2 rounded-lg flex-shrink-0"
+          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Status changer */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider mb-1.5 font-semibold"
+          style={{ color: 'var(--muted-foreground)' }}>Status</div>
+        <div className="flex flex-wrap gap-1.5">
+          {APP_STATUS_OPTIONS.map((s) => (
+            <button key={s.key} onClick={() => onStatusChange(s.key)}
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all"
+              style={app.status === s.key ? {
+                background: s.color, color: 'white',
+              } : {
+                background: 'rgba(255,255,255,0.04)',
+                color: s.color,
+                border: `1px solid ${s.color}40`,
+              }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Contact info */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        <InfoRow icon={<Phone className="w-3.5 h-3.5" />} label="WhatsApp" value={app.whatsapp}
+          href={`https://wa.me/${app.whatsapp.replace(/\D/g, '')}`} />
+        <InfoRow icon={<Mail className="w-3.5 h-3.5" />} label="Email" value={app.email}
+          href={`mailto:${app.email}`} />
+        <InfoRow icon={<MapPin className="w-3.5 h-3.5" />} label="County" value={app.county} />
+        <InfoRow icon={<GraduationCap className="w-3.5 h-3.5" />} label="School" value={app.school} />
+        <InfoRow icon={<FileText className="w-3.5 h-3.5" />} label="Course" value={app.course} />
+        <InfoRow icon={<Clock className="w-3.5 h-3.5" />} label="Year"
+          value={app.year_of_study.replace('_', ' ').replace('year ', 'Year ')} />
+      </div>
+
+      {/* Role-fit fields */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        <InfoRow label="Remote-ready" value={app.available_remote.replace('_', ' ')} />
+        <InfoRow label="Sales experience" value={app.has_experience.replace('_', ' ')} />
+      </div>
+
+      {/* Free-text answers */}
+      <div className="space-y-3">
+        <QuoteBlock label="Why this role?" text={app.why_interested} />
+        <QuoteBlock label="Pitch for CoinTap" text={app.pitch_cointap} />
+      </div>
+
+      {/* CV download */}
+      {app.has_cv && (
+        <a href={adminCareersApi.cvUrl(app.id)} target="_blank" rel="noopener"
+          className="flex items-center gap-2 p-3 rounded-xl text-sm font-semibold no-underline"
+          style={{
+            background: 'rgba(247,147,26,0.1)',
+            color: 'var(--primary)',
+            border: '1px solid rgba(247,147,26,0.25)',
+          }}>
+          <Download className="w-4 h-4" />
+          Download CV
+          {app.cv_size_bytes && (
+            <span className="ml-auto text-[10px] opacity-70">
+              {(app.cv_size_bytes / 1024).toFixed(0)} KB
+            </span>
+          )}
+        </a>
+      )}
+
+      {/* Admin notes */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider mb-1.5 font-semibold flex items-center justify-between"
+          style={{ color: 'var(--muted-foreground)' }}>
+          <span>Internal notes</span>
+          {notesDirty && (
+            <button onClick={() => { onSaveNotes(notes); setNotesDirty(false) }}
+              className="text-[10px] px-2 py-0.5 rounded normal-case"
+              style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+              Save
+            </button>
+          )}
+        </div>
+        <textarea value={notes}
+          onChange={(e) => { setNotes(e.target.value); setNotesDirty(true) }}
+          rows={3}
+          placeholder="Add notes only the team can see…"
+          className="w-full px-3 py-2 rounded-xl text-sm text-white"
+          style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }} />
+      </div>
+
+      {/* Footer meta */}
+      <div className="text-[10px] flex items-center justify-between pt-2"
+        style={{ color: 'var(--muted-foreground)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+        <span>ID #{app.id}</span>
+        {app.referrer && app.referrer !== 'direct' && <span>via {app.referrer}</span>}
+        {app.ip_address && <span className="font-mono">{app.ip_address}</span>}
+      </div>
+    </div>
+  )
+}
+
+function InfoRow({ icon, label, value, href }: {
+  icon?: React.ReactNode; label: string; value: string; href?: string
+}) {
+  const content = (
+    <>
+      <span className="text-[10px] uppercase tracking-wider opacity-60">{label}</span>
+      <span className="text-sm text-white font-medium break-all">{value || '—'}</span>
+    </>
+  )
+  const className = "flex flex-col p-2 rounded-lg"
+  const style = { background: 'rgba(0,0,0,0.2)' }
+  if (href) {
+    return <a href={href} target="_blank" rel="noopener noreferrer"
+      className={className + " no-underline hover:opacity-80 transition-opacity"} style={style}>
+      <div className="flex items-center gap-1.5 mb-0.5" style={{ color: 'var(--primary)' }}>
+        {icon} {content}
+      </div>
+    </a>
+  }
+  return <div className={className} style={style}>
+    {icon && <div className="flex items-center gap-1.5 mb-0.5" style={{ color: 'var(--primary)' }}>
+      {icon}
+    </div>}
+    {content}
+  </div>
+}
+
+function QuoteBlock({ label, text }: { label: string; text: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider mb-1 font-semibold"
+        style={{ color: 'var(--muted-foreground)' }}>{label}</div>
+      <div className="text-sm p-3 rounded-xl whitespace-pre-wrap"
+        style={{
+          background: 'rgba(247,147,26,0.06)',
+          border: '1px solid rgba(247,147,26,0.15)',
+          color: 'rgba(255,255,255,0.9)',
+        }}>
+        {text}
+      </div>
+    </div>
+  )
+}
+
 // ─── SYSTEM SETTINGS ──────────────────────────────────────
 function SettingsTab() {
   const [settings, setSettings] = useState<any | null>(null)
@@ -2010,6 +2436,7 @@ function SettingsTab() {
     { key: 'withdrawals_enabled', label: 'Withdrawals Enabled', description: 'Allow users to request payouts' },
     { key: 'registrations_open', label: 'Registrations Open', description: 'Allow new user signups' },
     { key: 'share_sale_open', label: 'Share Sale Window', description: 'Allow share purchases (buy orders)' },
+    { key: 'careers_open', label: 'Job Applications Open', description: 'When OFF, /apply shows "closed" message' },
     { key: 'maintenance_mode', label: 'Maintenance Mode', description: 'Show site-wide banner + block deposits / withdrawals / buys / registration', risky: true },
   ]
 

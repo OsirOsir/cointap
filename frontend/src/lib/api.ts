@@ -364,4 +364,19 @@ export const adminChatApi = {
   unreadCount: () => http.get<any>('/admin/chat/unread-count'),
 }
 
+// Admin careers wrappers
+export const adminCareersApi = {
+  list: (status: string = 'all', q = '', page = 1) => {
+    const params = new URLSearchParams({ status, page: String(page) })
+    if (q) params.set('q', q)
+    return http.get<any>(`/admin/applications/?${params.toString()}`)
+  },
+  detail: (id: number) => http.get<any>(`/admin/applications/${id}`),
+  update: (id: number, payload: { status?: string; admin_notes?: string }) =>
+    http.put<any>(`/admin/applications/${id}`, payload),
+  remove: (id: number) => http.del<any>(`/admin/applications/${id}`),
+  // CV download — returns a URL the browser navigates to
+  cvUrl: (id: number) => `/api/admin/applications/${id}/cv`,
+}
+
 export { ApiError }
