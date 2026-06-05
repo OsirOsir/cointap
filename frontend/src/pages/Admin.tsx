@@ -11,7 +11,7 @@ import { formatKsh, store, useStore, type Plan, type AdminUser, type Announcemen
 import { adminApi, adminChatApi, adminCareersApi } from '@/lib/api'
 import { QrGenerator } from '@/components/cointap/QrGenerator'
 import { ReferralBadge } from '@/components/cointap/ReferralBadge'
-import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
 type Tab = 'overview' | 'users' | 'plans' | 'pool' | 'orders' | 'withdrawals' | 'chat' | 'careers' | 'analytics' | 'announcements' | 'settings' | 'logs' | 'security'
 
@@ -1604,97 +1604,219 @@ function WithdrawalsTab() {
 
 // ─── ANALYTICS ────────────────────────────────────────────
 function AnalyticsTab() {
-  const users = useStore((s) => s.admin_users)
-  const plans = useStore((s) => s.plans)
+  const [range, setRange] = useState<'7' | '30' | '90' | 'all'>('30')
+  const [data, setData] = useState<{
+    series: any[]
+    top_referrers: { user_id: number; full_name: string; email: string; referral_code: string; signup_count: number; invested_count: number }[]
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const userGrowth = [
-    { day: 'Mon', users: 12 }, { day: 'Tue', users: 19 }, { day: 'Wed', users: 24 },
-    { day: 'Thu', users: 35 }, { day: 'Fri', users: 42 }, { day: 'Sat', users: 55 }, { day: 'Sun', users: 68 },
-  ]
+  async function load() {
+    setError('')
+    try {
+      const res = await adminApi.analytics(range)
+      setData({ series: res.series || [], top_referrers: res.top_referrers || [] })
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load analytics')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const revenueData = [
-    { month: 'Jan', revenue: 120000 }, { month: 'Feb', revenue: 180000 }, { month: 'Mar', revenue: 240000 },
-    { month: 'Apr', revenue: 380000 }, { month: 'May', revenue: 520000 },
-  ]
+  useEffect(() => { setLoading(true); load() }, [range])
 
-  const planDistribution = plans.map((p) => ({ name: p.name, value: Math.floor(Math.random() * 100) + 20 }))
-  const COLORS = ['#f5a623', '#7c3aed', '#fbbf24', '#4ade80']
+  // Poll every 60s — keeps the chart "alive" without flicker (only data updates)
+  useEffect(() => {
+    const t = setInterval(load, 60_000)
+    return () => clearInterval(t)
+  }, [range])
 
-  const topInvestors = [...users].sort((a, b) => b.total_deposited - a.total_deposited).slice(0, 5)
+  // Format the date for display ("Jun 4")
+  const series = (data?.series || []).map((d) => ({
+    ...d,
+    label: d.date ? new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
+  }))
+
+  const totalSignups = series.reduce((sum, d) => sum + (d.new_signups || 0), 0)
+  const totalDeposits = series.reduce((sum, d) => sum + (d.deposits_volume || 0), 0)
+  const totalWithdrawals = series.reduce((sum, d) => sum + (d.withdrawals_volume || 0), 0)
+  const totalOrders = series.reduce((sum, d) => sum + (d.orders_count || 0), 0)
 
   return (
     <div className="space-y-4">
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="glass rounded-2xl p-5">
-          <h3 className="font-bold text-white mb-4">User Growth (7d)</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={userGrowth}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="day" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
-              <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
-              <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
-              <Line type="monotone" dataKey="users" stroke="#f5a623" strokeWidth={3} dot={{ fill: '#f5a623' }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="glass rounded-2xl p-5">
-          <h3 className="font-bold text-white mb-4">Revenue Trend</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="month" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
-              <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
-              <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
-              <Bar dataKey="revenue" fill="#f5a623" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <TrendingUp className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+          Platform Analytics
+        </h2>
+        <div className="flex gap-1.5">
+          {(['7', '30', '90', 'all'] as const).map((r) => (
+            <button key={r} onClick={() => setRange(r)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              style={range === r ? {
+                background: 'var(--gradient-gold)',
+                color: 'var(--primary-foreground)',
+              } : {
+                background: 'rgba(255,255,255,0.05)',
+                color: 'rgba(255,255,255,0.7)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}>
+              {r === 'all' ? 'All' : `${r}d`}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="glass rounded-2xl p-5">
-          <h3 className="font-bold text-white mb-4">Plan Popularity</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={planDistribution} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value">
-                {planDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-3 space-y-1.5 text-xs">
-            {planDistribution.map((p, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-white">
-                  <span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                  {p.name}
-                </span>
-                <span className="font-mono" style={{ color: 'var(--muted-foreground)' }}>{p.value}%</span>
-              </div>
-            ))}
-          </div>
+      {error && (
+        <div className="p-3 rounded-xl flex items-center gap-2 text-sm text-red-400"
+          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <AlertTriangle className="w-4 h-4" /> {error}
         </div>
+      )}
 
-        <div className="glass rounded-2xl p-5">
-          <h3 className="font-bold text-white mb-4">Top Investors</h3>
-          <div className="space-y-2">
-            {topInvestors.map((u, i) => (
-              <div key={u.id} className="flex items-center gap-3 p-2 rounded-lg" style={{ background: 'rgba(0,0,0,0.2)' }}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs"
-                  style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-white truncate">{u.full_name}</div>
-                  <div className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{u.email}</div>
-                </div>
-                <div className="font-mono font-bold text-white text-sm">{formatKsh(u.total_deposited)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Quick stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="New signups" value={totalSignups.toLocaleString()} accent="#4ade80" />
+        <StatCard label="Deposits" value={`Ksh ${totalDeposits.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} accent="#fbbf24" />
+        <StatCard label="Withdrawals" value={`Ksh ${totalWithdrawals.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} accent="#ef4444" />
+        <StatCard label="Orders" value={totalOrders.toLocaleString()} accent="#a855f7" />
       </div>
+
+      {loading && !data ? (
+        <div className="text-center py-12 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          Loading analytics…
+        </div>
+      ) : series.length === 0 ? (
+        <div className="text-center py-12 text-sm rounded-2xl"
+          style={{ background: 'rgba(0,0,0,0.2)', color: 'var(--muted-foreground)' }}>
+          No data yet for this range. Check back tomorrow.
+        </div>
+      ) : (
+        <>
+          {/* Total users — cumulative line */}
+          <div className="glass rounded-2xl p-5">
+            <h3 className="font-bold text-white mb-1">Total Users</h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+              Cumulative registered users over time
+            </p>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="label" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+                <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+                <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }} />
+                <Line type="monotone" dataKey="total_users" stroke="#f7931a" strokeWidth={3} dot={false} name="Total users" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Daily signups — bar */}
+          <div className="glass rounded-2xl p-5">
+            <h3 className="font-bold text-white mb-1">Daily Signups</h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+              New users joining each day
+            </p>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="label" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+                <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '12px' }} />
+                <Bar dataKey="new_signups" fill="#4ade80" radius={[6, 6, 0, 0]} name="Signups" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Deposits vs withdrawals — overlay */}
+          <div className="glass rounded-2xl p-5">
+            <h3 className="font-bold text-white mb-1">Deposits vs Withdrawals</h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+              Ksh volume per day
+            </p>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="label" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+                <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+                <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(247,147,26,0.3)', borderRadius: '12px' }}
+                  formatter={(v: any) => `Ksh ${Number(v).toLocaleString()}`} />
+                <Legend wrapperStyle={{ fontSize: '11px' }} />
+                <Line type="monotone" dataKey="deposits_volume" stroke="#fbbf24" strokeWidth={2.5} dot={false} name="Deposits" />
+                <Line type="monotone" dataKey="withdrawals_volume" stroke="#ef4444" strokeWidth={2.5} dot={false} name="Withdrawals" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Daily orders — bar */}
+          <div className="glass rounded-2xl p-5">
+            <h3 className="font-bold text-white mb-1">Plan Purchases</h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+              Orders placed each day
+            </p>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="label" stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} />
+                <YAxis stroke="rgba(136,146,164,0.6)" style={{ fontSize: '11px' }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: 'rgba(20,24,33,0.95)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '12px' }} />
+                <Bar dataKey="orders_count" fill="#a855f7" radius={[6, 6, 0, 0]} name="Orders" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Top 5 referrers */}
+          <div className="glass rounded-2xl p-5">
+            <h3 className="font-bold text-white flex items-center gap-2 mb-3">
+              <Users className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+              Top Referrers
+            </h3>
+            {(data?.top_referrers || []).length === 0 ? (
+              <div className="text-center py-6 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                No referrers yet
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(data?.top_referrers || []).map((r, i) => (
+                  <div key={r.user_id} className="flex items-center gap-3 p-2.5 rounded-xl"
+                    style={{ background: 'rgba(0,0,0,0.2)' }}>
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                      style={{
+                        background: i === 0 ? '#fbbf24' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : 'rgba(255,255,255,0.08)',
+                        color: i < 3 ? '#0a0e1a' : 'rgba(255,255,255,0.7)',
+                      }}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">{r.full_name}</div>
+                      <div className="text-[10px] truncate font-mono" style={{ color: 'var(--muted-foreground)' }}>
+                        {r.referral_code}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-white">{r.signup_count}</div>
+                      <div className="text-[10px] text-green-400">{r.invested_count} invested</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <div className="rounded-xl p-3"
+      style={{ background: 'rgba(30,37,53,0.5)', border: `1px solid ${accent}30` }}>
+      <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: 'var(--muted-foreground)' }}>
+        {label}
+      </div>
+      <div className="text-base font-mono font-bold mt-0.5" style={{ color: accent }}>{value}</div>
     </div>
   )
 }

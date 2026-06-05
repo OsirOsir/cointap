@@ -256,6 +256,7 @@ export function normalizeWallet(w: any) {
 
 export const adminApi = {
   dashboard: () => http.get('/admin/dashboard'),
+  analytics: (range: string = '30') => http.get(`/admin/analytics?range=${range}`),
   users: (page = 1, q = '') => http.get(`/admin/users?page=${page}&q=${encodeURIComponent(q)}`),
   userDetail: (userId: number) => http.get(`/admin/users/${userId}`),
   adjustWallet: (userId: number, amount: number, description: string) =>

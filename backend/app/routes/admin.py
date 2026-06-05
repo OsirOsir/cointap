@@ -51,6 +51,82 @@ def dashboard():
     )
 
 
+@admin_bp.get("/analytics")
+@jwt_required()
+@admin_required
+def analytics():
+    """Return time-series chart data for the Analytics tab.
+
+    Query params:
+      range = 7 | 30 | 90 | all  (default 30)
+
+    Returns:
+      series:        list of daily snapshot dicts, oldest first
+      top_referrers: top 5 users by signup count
+      range:         echoed range (number of days, or "all")
+    """
+    from datetime import datetime, timedelta, timezone, date
+    from ..models.platform_snapshot import PlatformSnapshot
+    from ..models.referral import Referral
+    from ..models.user import User
+
+    range_param = (request.args.get("range") or "30").lower()
+    today = datetime.now(timezone.utc).date()
+
+    q = PlatformSnapshot.query
+    if range_param != "all":
+        try:
+            days = int(range_param)
+        except ValueError:
+            days = 30
+        days = max(1, min(days, 365))   # cap to 1 year for safety
+        cutoff = today - timedelta(days=days - 1)
+        q = q.filter(PlatformSnapshot.snapshot_date >= cutoff)
+
+    snapshots = q.order_by(PlatformSnapshot.snapshot_date.asc()).all()
+
+    # Top 5 referrers — by signup count (active users only). Uses promo_code.
+    # Computed live (not from snapshot) so it's always current.
+    from sqlalchemy import literal_column
+    sub = (
+        db.session.query(
+            User.promo_code.label("code"),
+            db.func.count(User.id).label("signup_count"),
+        )
+        .filter(User.promo_code.isnot(None))
+        .filter(User.is_active == True)
+        .group_by(User.promo_code)
+        .subquery()
+    )
+    top_rows = (
+        db.session.query(
+            User.id, User.full_name, User.email, User.referral_code, sub.c.signup_count
+        )
+        .join(sub, sub.c.code == User.referral_code)
+        .order_by(sub.c.signup_count.desc())
+        .limit(5)
+        .all()
+    )
+    # For each referrer, also count invested (credited Referral rows)
+    top_referrers = []
+    for uid, name, email, code, signups in top_rows:
+        invested = Referral.query.filter_by(referrer_id=uid, status="credited").count()
+        top_referrers.append({
+            "user_id": uid,
+            "full_name": name,
+            "email": email,
+            "referral_code": code,
+            "signup_count": signups,
+            "invested_count": invested,
+        })
+
+    return ok(
+        range=range_param,
+        series=[s.to_dict() for s in snapshots],
+        top_referrers=top_referrers,
+    )
+
+
 # ── Users ───────────────────────────────────────────────
 
 @admin_bp.get("/users")
