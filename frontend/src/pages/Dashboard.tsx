@@ -5,6 +5,7 @@ import {
   Users as UsersIcon, ArrowDownRight, ArrowUpRight, PiggyBank, BarChart3,
 } from 'lucide-react'
 import { formatKsh, useStore } from '@/lib/cointap-store'
+import { walletApi } from '@/lib/api'
 import { Countdown } from '@/components/cointap/Countdown'
 import { NodeBackground } from '@/components/cointap/NodeBackground'
 import { EmailVerificationBanner } from '@/components/cointap/Security'
@@ -17,24 +18,9 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts'
 
-// ─── MOCK DATA ────────────────────────────────────────────────
-const portfolioChart = [
-  { time: '00h', value: 42000 }, { time: '04h', value: 45200 },
-  { time: '08h', value: 48100 }, { time: '12h', value: 51900 },
-  { time: '16h', value: 50300 }, { time: '20h', value: 54200 },
-  { time: '24h', value: 57100 },
-]
-const earningsChart = [
-  { day: 'Mon', earned: 2400 }, { day: 'Tue', earned: 1398 },
-  { day: 'Wed', earned: 9800 }, { day: 'Thu', earned: 3908 },
-  { day: 'Fri', earned: 4800 }, { day: 'Sat', earned: 3800 },
-  { day: 'Sun', earned: 5300 },
-]
-const assetAllocation = [
-  { name: 'Starter', value: 35, color: '#f5a623' },
-  { name: 'Growth', value: 45, color: '#7c3aed' },
-  { name: 'Premium', value: 20, color: '#fbbf24' },
-]
+// ─── Donut colors for portfolio allocation chart ──────────────────
+// Cycled in order — first plan gets gold, second purple, etc.
+const ALLOCATION_COLORS = ['#f5a623', '#7c3aed', '#fbbf24', '#06b6d4', '#10b981', '#ef4444']
 
 // Generate fake sparkline data
 const sparkline = (seed: number, trending: 'up' | 'down') => {
@@ -218,6 +204,44 @@ export function Dashboard() {
     return () => clearInterval(t)
   }, [])
 
+  // ─── Per-user analytics ─────────────────────────────────────────
+  // Real portfolio history, earnings, and allocation derived from this
+  // user's actual transactions and orders. Refreshes every 60s silently.
+  const [portfolioPoints, setPortfolioPoints] = useState<{ label: string; value: number }[]>([])
+  const [earningsPoints, setEarningsPoints] = useState<{ label: string; earned: number }[]>([])
+  const [allocSegments, setAllocSegments] = useState<{
+    plan_id: number; name: string; amount: number; count: number; percent: number
+  }[]>([])
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadAnalytics() {
+      try {
+        const [hist, earn, alloc] = await Promise.all([
+          walletApi.portfolioHistory(),
+          walletApi.earningsByDay(),
+          walletApi.portfolioAllocation(),
+        ])
+        if (cancelled) return
+        setPortfolioPoints(hist.points || [])
+        setEarningsPoints(earn.points || [])
+        setAllocSegments(alloc.segments || [])
+        setAnalyticsLoaded(true)
+      } catch (e) {
+        // Silent failure — empty states will render. We don't want
+        // analytics errors to break the rest of the dashboard.
+        setAnalyticsLoaded(true)
+      }
+    }
+    loadAnalytics()
+    const t = setInterval(loadAnalytics, 60_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [])
+
+  // Derived: has the user earned anything this week?
+  const totalEarnedThisWeek = earningsPoints.reduce((sum, p) => sum + p.earned, 0)
+
   // Live market prices — fetch real BTC/ETH/SOL/BNB from CoinGecko every 60s.
   // Falls back to seed values until first response arrives.
   const [marketPrices, setMarketPrices] = useState<Record<string, number>>(FALLBACK_PRICES)
@@ -388,6 +412,68 @@ export function Dashboard() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════ */}
+      {/* LIQUIDITY POOL — moved above Market because pool health is */}
+      {/* the CoinTap-specific trust signal users care about most.  */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <div className="glass rounded-3xl p-5 sm:p-6 relative overflow-hidden animate-slide-up">
+        <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full blur-2xl pointer-events-none"
+          style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%)' }} />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <Droplets className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+              Liquidity Pool
+            </h3>
+            <div className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: '#4ade80' }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Auto-replenish active
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: 'var(--muted-foreground)' }}>
+              Public Pool
+            </div>
+            <div className="text-2xl sm:text-3xl font-bold text-gradient-gold font-mono mt-1">
+              <LiveNumber value={pool.public_pool_balance} prefix="Ksh " jitter={0.0015} pulse />
+            </div>
+            <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.3)' }}>
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: Math.min(100, (pool.public_pool_balance / (pool.public_pool_balance + pool.reserve_pool_balance)) * 100) + '%',
+                  background: 'linear-gradient(90deg, #fbbf24, #f7931a)',
+                }} />
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl"
+              style={{ background: 'rgba(247,147,26,0.06)', border: '1px solid rgba(247,147,26,0.15)' }}>
+              <div className="text-[9px] uppercase tracking-widest font-bold"
+                style={{ color: 'var(--muted-foreground)' }}>
+                Reserve
+              </div>
+              <div className="font-mono font-bold text-white text-sm mt-1">
+                <LiveNumber value={pool.reserve_pool_balance} prefix="Ksh " jitter={0.0008} />
+              </div>
+            </div>
+            <div className="p-3 rounded-xl"
+              style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}>
+              <div className="text-[9px] uppercase tracking-widest font-bold"
+                style={{ color: 'var(--muted-foreground)' }}>
+                Floor
+              </div>
+              <div className="font-mono font-bold text-white text-sm mt-1">
+                {formatKsh(pool.sold_out_floor)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════ */}
       {/* MARKET — Top movers with sparklines */}
       {/* ═══════════════════════════════════════════════════════ */}
       <div className="glass rounded-3xl p-5 sm:p-6 animate-slide-up">
@@ -436,7 +522,7 @@ export function Dashboard() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={portfolioChart} margin={{ top: 10, right: 20, left: -30, bottom: 0 }}>
+          <AreaChart data={portfolioPoints} margin={{ top: 10, right: 20, left: -30, bottom: 0 }}>
             <defs>
               <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#f5a623" stopOpacity={0.4} />
@@ -444,7 +530,7 @@ export function Dashboard() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey="time" stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="label" stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
             <YAxis stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
             <Tooltip
               contentStyle={{
@@ -454,18 +540,26 @@ export function Dashboard() {
                 color: '#f5f6fa',
                 backdropFilter: 'blur(20px)',
               }}
+              formatter={(v: number) => [`Ksh ${v.toLocaleString()}`, 'Balance']}
               cursor={{ stroke: 'rgba(247,147,26,0.4)', strokeWidth: 1, strokeDasharray: '4 4' }} />
             <Area type="monotone" dataKey="value" stroke="#f7931a" fillOpacity={1} fill="url(#colorPortfolio)" strokeWidth={2.5} />
           </AreaChart>
         </ResponsiveContainer>
+        {analyticsLoaded && portfolioPoints.every((p) => p.value === 0) && (
+          <div className="text-center py-3 -mt-12 relative z-10 pointer-events-none">
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              No portfolio activity yet in the last 24 hours
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════ */}
       {/* Active Investments + Pool */}
       {/* ═══════════════════════════════════════════════════════ */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        {/* Active investments */}
-        <div className="glass rounded-3xl p-5 sm:p-6 lg:col-span-2 animate-slide-up">
+      <div>
+        {/* Active investments (now full-width since pool moved above Market) */}
+        <div className="glass rounded-3xl p-5 sm:p-6 animate-slide-up">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
               <Activity className="w-4 h-4" style={{ color: 'var(--primary)' }} />
@@ -538,64 +632,6 @@ export function Dashboard() {
             </div>
           )}
         </div>
-
-        {/* Pool liquidity */}
-        <div className="glass rounded-3xl p-5 sm:p-6 relative overflow-hidden animate-slide-up">
-          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full blur-2xl pointer-events-none"
-            style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%)' }} />
-          <div className="relative z-10">
-            <h3 className="font-bold text-white text-sm flex items-center gap-2">
-              <Droplets className="w-4 h-4" style={{ color: 'var(--primary)' }} />
-              Liquidity Pool
-            </h3>
-
-            <div className="mt-4">
-              <div className="text-[10px] font-bold uppercase tracking-widest"
-                style={{ color: 'var(--muted-foreground)' }}>
-                Public Pool
-              </div>
-              <div className="text-xl font-bold text-gradient-gold font-mono mt-1">
-                <LiveNumber value={pool.public_pool_balance} prefix="Ksh " jitter={0.0015} pulse />
-              </div>
-              <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.3)' }}>
-                <div className="h-full rounded-full"
-                  style={{
-                    width: Math.min(100, (pool.public_pool_balance / (pool.public_pool_balance + pool.reserve_pool_balance)) * 100) + '%',
-                    background: 'linear-gradient(90deg, #fbbf24, #f7931a)',
-                  }} />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded-lg"
-                style={{ background: 'rgba(247,147,26,0.06)', border: '1px solid rgba(247,147,26,0.15)' }}>
-                <div className="text-[9px] uppercase tracking-widest font-bold"
-                  style={{ color: 'var(--muted-foreground)' }}>
-                  Reserve
-                </div>
-                <div className="font-mono font-bold text-white text-xs mt-1">
-                  <LiveNumber value={pool.reserve_pool_balance} prefix="Ksh " jitter={0.0008} />
-                </div>
-              </div>
-              <div className="p-2.5 rounded-lg"
-                style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}>
-                <div className="text-[9px] uppercase tracking-widest font-bold"
-                  style={{ color: 'var(--muted-foreground)' }}>
-                  Floor
-                </div>
-                <div className="font-mono font-bold text-white text-xs mt-1">
-                  {formatKsh(pool.sold_out_floor)}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 flex items-center gap-2 text-[10px]"
-              style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'var(--muted-foreground)' }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="font-semibold">Auto-replenish active</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════ */}
@@ -603,24 +639,49 @@ export function Dashboard() {
       {/* ═══════════════════════════════════════════════════════ */}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="glass rounded-3xl p-5 sm:p-6 animate-slide-up">
-          <h3 className="font-bold text-white text-sm mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" style={{ color: 'var(--primary)' }} />
-            Weekly Earnings
-          </h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={earningsChart} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="day" stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
-              <YAxis stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{
-                background: 'rgba(10,14,26,0.95)',
-                border: '1px solid rgba(247,147,26,0.3)',
-                borderRadius: '12px',
-                backdropFilter: 'blur(20px)',
-              }} cursor={{ fill: 'rgba(247,147,26,0.05)' }} />
-              <Bar dataKey="earned" fill="#f7931a" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+              Weekly Earnings
+            </h3>
+            {totalEarnedThisWeek > 0 && (
+              <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md"
+                style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>
+                +{formatKsh(totalEarnedThisWeek)}
+              </div>
+            )}
+          </div>
+          {analyticsLoaded && totalEarnedThisWeek === 0 ? (
+            <div className="flex flex-col items-center justify-center" style={{ height: 220 }}>
+              <div className="w-12 h-12 mb-3 rounded-2xl flex items-center justify-center"
+                style={{ background: 'rgba(247,147,26,0.08)', border: '1px solid rgba(247,147,26,0.15)' }}>
+                <TrendingUp className="w-6 h-6 opacity-50" style={{ color: 'var(--primary)' }} />
+              </div>
+              <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                No earnings this week yet
+              </p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                Earnings show up after orders mature
+              </p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={earningsPoints} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="label" stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
+                <YAxis stroke="rgba(136,146,164,0.4)" style={{ fontSize: '11px' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{
+                  background: 'rgba(10,14,26,0.95)',
+                  border: '1px solid rgba(247,147,26,0.3)',
+                  borderRadius: '12px',
+                  backdropFilter: 'blur(20px)',
+                }}
+                formatter={(v: number) => [`Ksh ${v.toLocaleString()}`, 'Earned']}
+                cursor={{ fill: 'rgba(247,147,26,0.05)' }} />
+                <Bar dataKey="earned" fill="#f7931a" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         <div className="glass rounded-3xl p-5 sm:p-6 animate-slide-up">
@@ -628,32 +689,59 @@ export function Dashboard() {
             <PieChart className="w-4 h-4" style={{ color: 'var(--primary)' }} />
             Portfolio Allocation
           </h3>
-          <div className="flex items-center gap-4">
-            <ResponsiveContainer width="55%" height={180}>
-              <PieChart>
-                <Pie data={assetAllocation} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" paddingAngle={3}>
-                  {assetAllocation.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{
-                  background: 'rgba(10,14,26,0.95)',
-                  border: '1px solid rgba(247,147,26,0.3)',
-                  borderRadius: '12px',
-                  backdropFilter: 'blur(20px)',
-                }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex-1 space-y-2 text-xs">
-              {assetAllocation.map((a, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ background: a.color }} />
-                    <span className="text-white font-semibold">{a.name}</span>
-                  </span>
-                  <span className="font-mono font-bold text-white">{a.value}%</span>
-                </div>
-              ))}
+          {analyticsLoaded && allocSegments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center" style={{ height: 180 }}>
+              <div className="w-12 h-12 mb-3 rounded-2xl flex items-center justify-center"
+                style={{ background: 'rgba(247,147,26,0.08)', border: '1px solid rgba(247,147,26,0.15)' }}>
+                <PieChart className="w-6 h-6 opacity-50" style={{ color: 'var(--primary)' }} />
+              </div>
+              <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                No investments yet
+              </p>
+              <Link to="/plans" className="text-[11px] mt-2 font-semibold"
+                style={{ color: 'var(--primary)' }}>
+                Get started →
+              </Link>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <ResponsiveContainer width="55%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={allocSegments.map((s, i) => ({
+                      name: s.name,
+                      value: s.amount,
+                      color: ALLOCATION_COLORS[i % ALLOCATION_COLORS.length],
+                    }))}
+                    cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                    dataKey="value" paddingAngle={3}>
+                    {allocSegments.map((_, i) => (
+                      <Cell key={i} fill={ALLOCATION_COLORS[i % ALLOCATION_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{
+                    background: 'rgba(10,14,26,0.95)',
+                    border: '1px solid rgba(247,147,26,0.3)',
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(20px)',
+                  }}
+                  formatter={(v: number) => [`Ksh ${v.toLocaleString()}`, 'Invested']} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex-1 space-y-2 text-xs">
+                {allocSegments.map((seg, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full"
+                        style={{ background: ALLOCATION_COLORS[i % ALLOCATION_COLORS.length] }} />
+                      <span className="text-white font-semibold">{seg.name}</span>
+                    </span>
+                    <span className="font-mono font-bold text-white">{Math.round(seg.percent)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
