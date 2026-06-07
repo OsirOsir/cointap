@@ -178,6 +178,22 @@ export const walletApi = {
   transactions: (page = 1) => http.get(`/wallet/transactions?page=${page}`),
   initiateDeposit: (amount: number, phone: string) =>
     http.post('/wallet/deposit/initiate', { amount, phone }),
+  // Dashboard analytics — real per-user data
+  portfolioHistory: () => http.get<{
+    ok: boolean
+    points: { label: string; value: number }[]
+    current: number
+  }>('/wallet/portfolio-history'),
+  earningsByDay: () => http.get<{
+    ok: boolean
+    points: { label: string; date: string; earned: number }[]
+    total: number
+  }>('/wallet/earnings-by-day'),
+  portfolioAllocation: () => http.get<{
+    ok: boolean
+    segments: { plan_id: number; name: string; amount: number; count: number; percent: number }[]
+    total: number
+  }>('/wallet/portfolio-allocation'),
 }
 
 export const plansApi = {
