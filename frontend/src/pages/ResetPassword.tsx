@@ -28,9 +28,32 @@ export function ResetPassword() {
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
 
-  // If somebody hits this page without a token (e.g. bookmark from later),
-  // bail immediately to a helpful error state.
-  const noToken = !token
+  // Pre-flight token validity. We check ONCE on page load so the user
+  // sees an immediate "expired" message instead of typing a password
+  // first only to be told the link is dead.
+  //   'checking' → still verifying with the server
+  //   'valid'    → show the form
+  //   'invalid'  → show the "link expired" UI
+  //   'missing'  → URL had no token at all
+  const [tokenState, setTokenState] = useState<'checking' | 'valid' | 'invalid' | 'missing'>(
+    token ? 'checking' : 'missing'
+  )
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    http.get<{ ok: boolean; valid: boolean }>(`/auth/verify-reset-token?token=${encodeURIComponent(token)}`)
+      .then((res) => {
+        if (cancelled) return
+        setTokenState(res.valid ? 'valid' : 'invalid')
+      })
+      .catch(() => {
+        // Network or server error — fail closed (show "invalid"), let
+        // the user request a fresh link rather than risk a silent flow.
+        if (!cancelled) setTokenState('invalid')
+      })
+    return () => { cancelled = true }
+  }, [token])
 
   const strength = getPasswordStrength(password)
 
@@ -69,7 +92,8 @@ export function ResetPassword() {
 
   // ── States ─────────────────────────────────────────────────
 
-  if (noToken) {
+  // No token in URL at all
+  if (tokenState === 'missing') {
     return (
       <AuthShell
         title="Invalid reset link"
@@ -86,6 +110,46 @@ export function ResetPassword() {
             Make sure you opened the link from your email exactly as it was sent.
             If the link expired, you can request a new one.
           </div>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  // Pre-flight check still in flight
+  if (tokenState === 'checking') {
+    return (
+      <AuthShell title="Just a moment…" subtitle="Verifying your reset link.">
+        <div className="text-center py-8">
+          <div className="inline-block w-8 h-8 rounded-full animate-spin"
+            style={{ border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--primary)' }} />
+        </div>
+      </AuthShell>
+    )
+  }
+
+  // Token used, expired, or fake
+  if (tokenState === 'invalid') {
+    return (
+      <AuthShell
+        title="Link expired or already used"
+        subtitle="For your security, reset links can only be used once and expire after 1 hour."
+        footer={<>Need a fresh link? <Link to="/forgot-password" style={{ color: 'var(--primary)' }} className="font-medium">Request one</Link></>}
+      >
+        <div className="text-center py-4">
+          <div className="w-14 h-14 rounded-full mx-auto mb-4 flex items-center justify-center"
+            style={{ background: 'rgba(239,68,68,0.15)' }}>
+            <span className="text-2xl">🔒</span>
+          </div>
+          <div className="text-sm text-white font-medium">This reset link is no longer valid</div>
+          <div className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>
+            It may have already been used to reset your password, or it has expired.
+            Request a new link to try again.
+          </div>
+          <Link to="/forgot-password"
+            className="inline-block mt-5 px-5 py-2.5 rounded-xl font-semibold no-underline"
+            style={{ background: 'var(--gradient-gold)', color: 'var(--primary-foreground)' }}>
+            Request new reset link
+          </Link>
         </div>
       </AuthShell>
     )

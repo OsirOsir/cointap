@@ -239,6 +239,30 @@ def forgot_password():
     return ok(message="If an account with that email exists, a reset link has been sent.")
 
 
+@auth_bp.get("/verify-reset-token")
+def verify_reset_token():
+    """Cheap pre-flight check: is this reset token still valid?
+
+    Frontend hits this on /reset-password page load so users get an
+    immediate "expired" error instead of typing a new password and
+    only then being told the link is dead.
+
+    Returns:
+      { ok: true, valid: true }   — token is good, show the form
+      { ok: true, valid: false }  — token is bad/used/expired
+    """
+    raw_token = (request.args.get("token") or "").strip()
+    if not raw_token:
+        return ok(valid=False, reason="missing")
+
+    from ..models.password_reset import PasswordResetToken
+    row = PasswordResetToken.find_valid_by_raw(raw_token)
+    if not row:
+        return ok(valid=False, reason="invalid_or_expired")
+
+    return ok(valid=True)
+
+
 @auth_bp.post("/reset-password")
 def reset_password():
     """Consume a reset token and set a new password.
