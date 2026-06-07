@@ -39,8 +39,14 @@ def register_user(full_name: str, email: str, phone: str, password: str, promo_c
     # have email_verified=False but can still log in.
     try:
         from ..models.settings import get_settings as _gs
-        if _gs().email_verification_required:
+        settings_now = _gs()
+        if settings_now.email_verification_required:
             _send_verification_email_for(user, request_ip=None)
+        else:
+            # Verification is OFF (growth mode) — send welcome NOW since
+            # the user can use the platform immediately. We never re-send
+            # this welcome later (one-shot via welcome_email_sent_at).
+            _send_welcome_email_for(user)
     except Exception:
         # Email send is best-effort; don't block registration on it
         pass
@@ -87,6 +93,31 @@ def _send_verification_email_for(user, request_ip: str | None = None) -> bool:
         full_name=user.full_name,
         verify_url=verify_url,
     )
+
+
+def _send_welcome_email_for(user) -> bool:
+    """Send the welcome email — exactly ONCE per user lifetime.
+
+    Stamped via user.welcome_email_sent_at so a flaky network on first
+    attempt doesn't permanently skip the user, but a successful send
+    permanently locks it from re-firing later (e.g. if they re-verify).
+
+    Safe to call multiple times: only sends if not previously stamped.
+    """
+    from ..utils.email import send_welcome_email
+    from datetime import datetime, timezone
+    if user.welcome_email_sent_at is not None:
+        return False   # already sent
+    success = send_welcome_email(
+        to_email=user.email,
+        full_name=user.full_name,
+        referral_code=user.referral_code,
+    )
+    if success:
+        user.welcome_email_sent_at = datetime.now(timezone.utc)
+        db.session.add(user)
+        db.session.commit()
+    return success
 
 
 def authenticate_user(email: str, password: str) -> dict:

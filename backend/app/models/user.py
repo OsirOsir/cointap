@@ -23,6 +23,10 @@ class User(db.Model):
     # enabled, the user cannot log in until they verify via the email link.
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
     email_verified_at = db.Column(db.DateTime, nullable=True)
+    # Welcome email — tracked separately so we send it exactly ONCE per user
+    # lifetime: after signup (when verification OFF) or after first verify
+    # (when verification ON). Never re-sent on subsequent verifies.
+    welcome_email_sent_at = db.Column(db.DateTime, nullable=True)
     # Set when the user has been awarded the referral-milestone bonus (one-shot)
     milestone_bonus_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

@@ -374,6 +374,15 @@ def verify_email():
     row.mark_used()
     db.session.commit()
 
+    # Send the welcome email now — but only if we haven't sent it before.
+    # The helper is idempotent so this is safe even if the user verifies,
+    # un-verifies somehow, and re-verifies; welcome only fires once.
+    try:
+        from ..services.auth_service import _send_welcome_email_for
+        _send_welcome_email_for(user)
+    except Exception:
+        pass  # best effort
+
     return ok(message="Email verified! You can now sign in.")
 
 

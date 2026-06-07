@@ -385,6 +385,24 @@ def approve_withdrawal(wd_id: int):
     if not result["ok"]:
         wd.admin_note = result.get("error", "B2C initiation failed")
     db.session.commit()
+
+    # Email the user that funds are on the way. Best-effort — never breaks
+    # the admin action even if Brevo is down.
+    try:
+        from ..models.user import User as _U
+        from ..utils.email import send_withdrawal_approved_email
+        u = _U.query.get(wd.user_id)
+        if u and u.email:
+            send_withdrawal_approved_email(
+                to_email=u.email,
+                full_name=u.full_name,
+                amount=float(wd.amount),
+                phone=wd.phone,
+                reference=wd.mpesa_reference,
+            )
+    except Exception:
+        pass
+
     return ok(withdrawal=wd.to_dict(), b2c=result)
 
 
@@ -405,8 +423,25 @@ def reject_withdrawal(wd_id: int):
     )
     wd.status = "Rejected"
     wd.processed_at = datetime.now(timezone.utc)
-    wd.admin_note = (request.get_json(silent=True) or {}).get("reason", "Rejected by admin")
+    reason = (request.get_json(silent=True) or {}).get("reason", "Rejected by admin")
+    wd.admin_note = reason
     db.session.commit()
+
+    # Email the user that withdrawal was declined and the funds are back.
+    try:
+        from ..models.user import User as _U
+        from ..utils.email import send_withdrawal_rejected_email
+        u = _U.query.get(wd.user_id)
+        if u and u.email:
+            send_withdrawal_rejected_email(
+                to_email=u.email,
+                full_name=u.full_name,
+                amount=float(wd.amount),
+                reason=reason if reason != "Rejected by admin" else None,
+            )
+    except Exception:
+        pass
+
     return ok(withdrawal=wd.to_dict())
 
 

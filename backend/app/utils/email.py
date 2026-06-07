@@ -258,3 +258,189 @@ def send_verification_email(to_email: str, full_name: str, verify_url: str) -> b
         html_body=html,
         text_body=text_body,
     )
+
+
+def send_welcome_email(to_email: str, full_name: str, referral_code: str | None = None) -> bool:
+    """Welcome email — sent once after registration (verification OFF mode)
+    or after first successful verification (verification ON mode)."""
+    import os
+    first_name = full_name.split(" ")[0] if full_name else "there"
+    frontend_url = os.getenv("FRONTEND_URL", "https://cointap.online").rstrip("/")
+    dashboard_url = f"{frontend_url}/dashboard"
+    plans_url = f"{frontend_url}/plans"
+    ref_url = f"{frontend_url}/register?ref={referral_code}" if referral_code else None
+
+    ref_section = ""
+    if ref_url:
+        ref_section = f"""
+      <div style="margin:24px 0;padding:16px;background:#fef3e7;border-radius:12px;border-left:4px solid {_PRIMARY};">
+        <div style="color:{_NAVY};font-size:13px;font-weight:bold;margin-bottom:6px;">🎁 Your referral code</div>
+        <div style="font-family:monospace;font-size:18px;color:{_PRIMARY};font-weight:bold;letter-spacing:2px;">{referral_code}</div>
+        <div style="font-size:12px;color:#666;margin-top:6px;">
+          Share it with friends. You earn 3% of every friend's first investment, plus milestone bonuses.
+        </div>
+      </div>"""
+
+    body_html = f"""
+      <h2 style="margin:0 0 16px 0;color:{_NAVY};font-size:22px;">Welcome aboard, {first_name}! 🚀</h2>
+      <p style="margin:0 0 16px 0;color:#333;font-size:15px;line-height:1.5;">
+        Your CoinTap account is ready. Here's everything you need to get started.
+      </p>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+        <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">
+          <strong style="color:{_NAVY};">1. Deposit via M-Pesa</strong><br>
+          <span style="color:#666;font-size:13px;">Add funds to your CoinTap wallet using your M-Pesa number.</span>
+        </td></tr>
+        <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">
+          <strong style="color:{_NAVY};">2. Pick a plan</strong><br>
+          <span style="color:#666;font-size:13px;">Choose an investment that matches your goals — durations from days to weeks.</span>
+        </td></tr>
+        <tr><td style="padding:12px 0;border-bottom:1px solid #eee;">
+          <strong style="color:{_NAVY};">3. Watch it grow</strong><br>
+          <span style="color:#666;font-size:13px;">Your returns mature automatically. Withdraw to M-Pesa anytime after maturity.</span>
+        </td></tr>
+        <tr><td style="padding:12px 0;">
+          <strong style="color:{_NAVY};">4. Earn from referrals</strong><br>
+          <span style="color:#666;font-size:13px;">Share your code, earn bonuses when friends invest.</span>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
+        <tr><td style="background:{_PRIMARY};border-radius:10px;">
+          <a href="{dashboard_url}" style="display:inline-block;padding:14px 32px;color:#0a0e1a;font-weight:bold;text-decoration:none;font-size:15px;">
+            Go to my dashboard →
+          </a>
+        </td></tr>
+      </table>
+
+      {ref_section}
+
+      <p style="margin:24px 0 0 0;color:#888;font-size:13px;line-height:1.5;">
+        Need help? Tap the chat bubble at the bottom-right of any CoinTap page — we usually reply within a few minutes.
+      </p>
+    """
+    text_body = (
+        f"Welcome to CoinTap, {first_name}!\n\n"
+        f"Your account is ready. To get started:\n"
+        f"  1. Deposit via M-Pesa\n"
+        f"  2. Pick a plan\n"
+        f"  3. Watch it grow — withdraw to M-Pesa after maturity\n"
+        f"  4. Earn from referrals\n\n"
+        f"Dashboard: {dashboard_url}\n"
+        + (f"\nYour referral code: {referral_code}\n" if referral_code else "")
+        + "\n— CoinTap"
+    )
+    html = _wrap_email(
+        preheader="Welcome to CoinTap — here's how to get started.",
+        body_html=body_html,
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Welcome to CoinTap 🚀",
+        html_body=html,
+        text_body=text_body,
+    )
+
+
+def send_withdrawal_approved_email(
+    to_email: str, full_name: str, amount: float, phone: str,
+    reference: str | None = None,
+) -> bool:
+    """Sent when admin approves a withdrawal."""
+    first_name = full_name.split(" ")[0] if full_name else "there"
+    # Mask the phone number for the email body so it doesn't expose full number
+    # Show first 4 + last 3: 0712XXX678
+    masked_phone = phone
+    if len(phone) >= 7:
+        masked_phone = phone[:4] + "X" * (len(phone) - 7) + phone[-3:]
+
+    body_html = f"""
+      <h2 style="margin:0 0 16px 0;color:{_NAVY};font-size:22px;">Your withdrawal is on the way ✓</h2>
+      <p style="margin:0 0 24px 0;color:#333;font-size:15px;line-height:1.5;">
+        Hi {first_name}, we approved your withdrawal request. Funds are being sent now.
+      </p>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+        style="margin:20px 0;background:#fafafa;border-radius:12px;padding:0;">
+        <tr><td style="padding:18px 20px;">
+          <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Amount</div>
+          <div style="font-size:28px;color:{_NAVY};font-weight:bold;font-family:monospace;">Ksh {amount:,.0f}</div>
+        </td></tr>
+        <tr><td style="padding:0 20px 12px 20px;">
+          <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">M-Pesa Number</div>
+          <div style="font-size:15px;color:{_NAVY};font-family:monospace;">{masked_phone}</div>
+        </td></tr>
+        {f'''<tr><td style="padding:0 20px 18px 20px;">
+          <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Reference</div>
+          <div style="font-size:13px;color:{_NAVY};font-family:monospace;">{reference}</div>
+        </td></tr>''' if reference else ''}
+      </table>
+
+      <p style="margin:24px 0 0 0;color:#666;font-size:13px;line-height:1.5;">
+        M-Pesa transfers usually arrive within a few minutes. If you don't see it within an hour, reach out via chat and we'll investigate.
+      </p>
+    """
+    text_body = (
+        f"Hi {first_name},\n\n"
+        f"Your withdrawal of Ksh {amount:,.2f} was approved.\n"
+        f"Sending to: {masked_phone}\n"
+        + (f"Reference: {reference}\n" if reference else "")
+        + f"\nFunds usually arrive within minutes.\n\n"
+        f"— CoinTap"
+    )
+    html = _wrap_email(
+        preheader=f"Withdrawal of Ksh {amount:,.0f} approved — on the way to your M-Pesa.",
+        body_html=body_html,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Withdrawal approved — Ksh {amount:,.0f} on the way",
+        html_body=html,
+        text_body=text_body,
+    )
+
+
+def send_withdrawal_rejected_email(
+    to_email: str, full_name: str, amount: float, reason: str | None = None,
+) -> bool:
+    """Sent when admin rejects a withdrawal. The amount is reversed to wallet."""
+    first_name = full_name.split(" ")[0] if full_name else "there"
+    reason_text = reason or "Please contact support if you'd like more details."
+
+    body_html = f"""
+      <h2 style="margin:0 0 16px 0;color:{_NAVY};font-size:22px;">Your withdrawal request was declined</h2>
+      <p style="margin:0 0 16px 0;color:#333;font-size:15px;line-height:1.5;">
+        Hi {first_name}, we weren't able to process your withdrawal of <strong>Ksh {amount:,.2f}</strong>.
+      </p>
+      <p style="margin:0 0 24px 0;color:#333;font-size:15px;line-height:1.5;">
+        <strong>The full amount has been returned to your CoinTap wallet.</strong> Nothing was deducted.
+      </p>
+
+      <div style="margin:20px 0;padding:16px;background:#fef3e7;border-radius:12px;border-left:4px solid {_PRIMARY};">
+        <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Reason</div>
+        <div style="font-size:14px;color:{_NAVY};">{reason_text}</div>
+      </div>
+
+      <p style="margin:24px 0 0 0;color:#666;font-size:13px;line-height:1.5;">
+        You can request a new withdrawal at any time from your wallet page. If you have questions about this decision, tap the chat bubble on CoinTap to reach support.
+      </p>
+    """
+    text_body = (
+        f"Hi {first_name},\n\n"
+        f"Your withdrawal of Ksh {amount:,.2f} was declined.\n"
+        f"Reason: {reason_text}\n\n"
+        f"The full amount has been returned to your CoinTap wallet. "
+        f"You can request a new withdrawal at any time.\n\n"
+        f"— CoinTap"
+    )
+    html = _wrap_email(
+        preheader=f"Withdrawal of Ksh {amount:,.0f} declined — refunded to your wallet.",
+        body_html=body_html,
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Your withdrawal request was declined",
+        html_body=html,
+        text_body=text_body,
+    )
