@@ -27,11 +27,13 @@ export const tokens = {
   },
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  data: any   // raw response body — for error codes like 'email_not_verified'
+  constructor(message: string, status: number, data: any = null) {
     super(message)
     this.status = status
+    this.data = data
   }
 }
 
@@ -93,7 +95,7 @@ export async function api<T = any>(
 
   if (!res.ok) {
     const message = body?.error || body?.msg || `Request failed (${res.status})`
-    throw new ApiError(message, res.status)
+    throw new ApiError(message, res.status, body)
   }
   return body as T
 }
@@ -119,16 +121,23 @@ export interface ApiUser {
   promo_code?: string
   role: 'user' | 'admin'
   is_active: boolean
+  email_verified?: boolean
   created_at: string
 }
 
 export const authApi = {
   async register(input: { full_name: string; email: string; phone: string; password: string; promo_code?: string }) {
-    const data = await http.post<{ ok: boolean; user: ApiUser; access_token: string; refresh_token: string }>(
-      '/auth/register', input, false,
-    )
-    tokens.set(data.access_token, data.refresh_token)
-    return data.user
+    const data = await http.post<{
+      ok: boolean
+      user: ApiUser
+      access_token?: string
+      refresh_token?: string
+      verification_required?: boolean
+    }>('/auth/register', input, false)
+    if (data.access_token && data.refresh_token) {
+      tokens.set(data.access_token, data.refresh_token)
+    }
+    return { user: data.user, verificationRequired: !!data.verification_required }
   },
 
   async login(email: string, password: string) {
@@ -379,5 +388,3 @@ export const adminCareersApi = {
   // CV download — returns a URL the browser navigates to
   cvUrl: (id: number) => `/api/admin/applications/${id}/cv`,
 }
-
-export { ApiError }

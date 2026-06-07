@@ -544,8 +544,20 @@ def admin_get_settings():
 @admin_required
 def admin_update_settings():
     from ..models.settings import get_settings
+    from datetime import datetime, timezone
     s = get_settings()
     d = request.get_json() or {}
+
+    # Special handling for email_verification_required — when flipped from
+    # OFF→ON we stamp `verification_required_at`. That timestamp is what
+    # the auth flow uses to grandfather older users in.
+    if "email_verification_required" in d:
+        new_val = bool(d["email_verification_required"])
+        if new_val and not s.email_verification_required:
+            # Flipping ON for the first time (or after being OFF)
+            s.verification_required_at = datetime.now(timezone.utc)
+        s.email_verification_required = new_val
+
     for field in (
         "deposits_enabled",
         "withdrawals_enabled",

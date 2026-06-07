@@ -208,3 +208,53 @@ def send_password_reset_email(to_email: str, full_name: str, reset_url: str) -> 
         html_body=html,
         text_body=text_body,
     )
+
+
+def send_verification_email(to_email: str, full_name: str, verify_url: str) -> bool:
+    """Send a "click this link to verify your email" email."""
+    first_name = full_name.split(" ")[0] if full_name else "there"
+    body_html = f"""
+      <h2 style="margin:0 0 16px 0;color:{_NAVY};font-size:22px;">Welcome to CoinTap, {first_name}! 🎉</h2>
+      <p style="margin:0 0 16px 0;color:#333;font-size:15px;line-height:1.5;">
+        We're excited to have you on board. To finish setting up your account,
+        please verify your email address by clicking the button below.
+      </p>
+      <p style="margin:0 0 24px 0;color:#333;font-size:15px;line-height:1.5;">
+        This link expires in <strong>24 hours</strong>.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+        <tr><td style="background:{_PRIMARY};border-radius:10px;">
+          <a href="{verify_url}" style="display:inline-block;padding:14px 32px;color:#0a0e1a;font-weight:bold;text-decoration:none;font-size:15px;">
+            Verify my email →
+          </a>
+        </td></tr>
+      </table>
+      <p style="margin:24px 0 8px 0;color:#666;font-size:13px;line-height:1.5;">
+        If the button doesn't work, copy and paste this link into your browser:
+      </p>
+      <p style="margin:0 0 24px 0;color:{_PRIMARY};font-size:12px;word-break:break-all;font-family:monospace;">
+        {verify_url}
+      </p>
+      <p style="margin:24px 0 0 0;color:#888;font-size:13px;line-height:1.5;">
+        <strong>Didn't sign up for CoinTap?</strong> Someone may have entered your email by mistake.
+        You can safely ignore this email — no account will be activated without verification.
+      </p>
+    """
+    text_body = (
+        f"Welcome to CoinTap, {first_name}!\n\n"
+        f"To finish setting up your account, please verify your email by opening the link below. "
+        f"This link expires in 24 hours.\n\n"
+        f"{verify_url}\n\n"
+        f"Didn't sign up? Just ignore this email.\n\n"
+        f"— CoinTap"
+    )
+    html = _wrap_email(
+        preheader="Verify your CoinTap email address — one click to get started",
+        body_html=body_html,
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Verify your CoinTap email",
+        html_body=html,
+        text_body=text_body,
+    )

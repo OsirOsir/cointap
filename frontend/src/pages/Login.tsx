@@ -50,6 +50,12 @@ export function Login() {
     const res = await store.apiLogin(email, password)
 
     if (!res.ok) {
+      // Email-not-verified is a special case: route them to the verify
+      // page where they can resend the link. Pre-fills the email field.
+      if (res.error_code === 'email_not_verified') {
+        navigate(`/verify-email?email=${encodeURIComponent(email)}`)
+        return
+      }
       setError(res.error || 'Login failed')
       return
     }

@@ -19,6 +19,10 @@ class User(db.Model):
     promo_code = db.Column(db.String(20), nullable=True)   # referral code they used at signup
     role = db.Column(db.String(10), default="user")        # 'user' | 'admin'
     is_active = db.Column(db.Boolean, default=True)
+    # Email verification — when False and platform has verification gating
+    # enabled, the user cannot log in until they verify via the email link.
+    email_verified = db.Column(db.Boolean, default=False, nullable=False)
+    email_verified_at = db.Column(db.DateTime, nullable=True)
     # Set when the user has been awarded the referral-milestone bonus (one-shot)
     milestone_bonus_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -39,5 +43,6 @@ class User(db.Model):
             "promo_code": self.promo_code,
             "role": self.role,
             "is_active": self.is_active,
+            "email_verified": bool(self.email_verified),
             "created_at": self.created_at.isoformat(),
         }

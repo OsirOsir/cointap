@@ -28,6 +28,12 @@ class PlatformSettings(db.Model):
     # counting. Flipping does NOT retroactively reverse already-paid bonuses.
     milestone_counts_signups = db.Column(db.Boolean, default=False, nullable=False)
 
+    # When True, new signups must verify their email before they can log in.
+    # Tracked with a "flipped at" timestamp so existing users from before
+    # the flip aren't affected — they grandfather in.
+    email_verification_required = db.Column(db.Boolean, default=False, nullable=False)
+    verification_required_at = db.Column(db.DateTime, nullable=True)
+
     # Referral milestone bonus — pays user a one-time bonus when they reach
     # a threshold of credited (real-purchase-backed) referrals.
     referral_milestone_threshold = db.Column(db.Integer, default=10, nullable=False)
@@ -55,6 +61,8 @@ class PlatformSettings(db.Model):
             "maintenance_message": self.maintenance_message or "",
             "careers_open": bool(self.careers_open),
             "milestone_counts_signups": bool(self.milestone_counts_signups),
+            "email_verification_required": bool(self.email_verification_required),
+            "verification_required_at": self.verification_required_at.isoformat() if self.verification_required_at else None,
             "referral_milestone_threshold": int(self.referral_milestone_threshold or 0),
             "referral_milestone_amount": float(self.referral_milestone_amount or 0),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

@@ -2584,6 +2584,7 @@ function SettingsTab() {
     { key: 'share_sale_open', label: 'Share Sale Window', description: 'Allow share purchases (buy orders)' },
     { key: 'careers_open', label: 'Job Applications Open', description: 'When OFF, /apply shows "closed" message' },
     { key: 'milestone_counts_signups', label: 'Milestone Counts Signups', description: 'ON: milestone awards on signup count (growth mode). OFF: counts only invested referrals (default).', risky: true },
+    { key: 'email_verification_required', label: 'Email Verification Required', description: 'ON: new signups must verify their email before logging in. OFF: skips verification (growth mode). Existing users are grandfathered in either way.', risky: true },
     { key: 'maintenance_mode', label: 'Maintenance Mode', description: 'Show site-wide banner + block deposits / withdrawals / buys / registration', risky: true },
   ]
 

@@ -41,6 +41,16 @@ def register():
         return err(result["error"])
 
     user = result["user"]
+
+    # If admin has enabled email verification, NEW signups must verify
+    # before they get a session. We skip the JWT entirely — the frontend
+    # routes them to /verify-email where they wait for the email link.
+    if settings.email_verification_required:
+        return ok(
+            user=user.to_dict(),
+            verification_required=True,
+        ), 201
+
     return ok(
         user=user.to_dict(),
         access_token=create_access_token(identity=str(user.id)),
@@ -56,6 +66,15 @@ def login():
 
     result = authenticate_user(d["email"], d["password"])
     if not result["ok"]:
+        # Surface the specific error_code so the frontend can show the
+        # right UI (e.g. "verify your email" button) for unverified users.
+        if result.get("error_code") == "email_not_verified":
+            return jsonify({
+                "ok": False,
+                "error": result["error"],
+                "error_code": "email_not_verified",
+                "email": result.get("email"),
+            }), 403
         return err(result["error"], 401)
 
     user = result["user"]
@@ -300,3 +319,92 @@ def reset_password():
     db.session.commit()
 
     return ok(message="Password updated. You can now sign in with your new password.")
+
+
+# ────────────────────────────────────────────────────────────────────
+# Email Verification Flow
+# ────────────────────────────────────────────────────────────────────
+
+@auth_bp.get("/verify-email-token")
+def verify_email_token_check():
+    """Pre-flight check on a verification token. Same purpose as
+    /verify-reset-token — lets the frontend show the right UI immediately."""
+    raw_token = (request.args.get("token") or "").strip()
+    if not raw_token:
+        return ok(valid=False, reason="missing")
+
+    from ..models.email_verification import EmailVerificationToken
+    row = EmailVerificationToken.find_valid_by_raw(raw_token)
+    if not row:
+        return ok(valid=False, reason="invalid_or_expired")
+
+    return ok(valid=True)
+
+
+@auth_bp.post("/verify-email")
+def verify_email():
+    """Consume a verification token and mark the user verified."""
+    from datetime import datetime, timezone
+    data = request.get_json(silent=True) or {}
+    raw_token = (data.get("token") or "").strip()
+
+    if not raw_token:
+        return err("Verification token is missing", 400)
+
+    ip = _client_ip()
+    if not _check_rate_limit(f"verify_ip:{ip}", max_count=20, window_seconds=600):
+        return err("Too many attempts. Please wait a few minutes.", 429)
+
+    from ..models.email_verification import EmailVerificationToken
+    row = EmailVerificationToken.find_valid_by_raw(raw_token)
+    if not row:
+        return err("This verification link is invalid or has expired. Request a new one.", 400)
+
+    user = User.query.get(row.user_id)
+    if not user:
+        return err("This verification link is invalid or has expired. Request a new one.", 400)
+
+    # Guard against the "change email then verify old token" exploit:
+    # the token's `email` field must match the user's current email.
+    if row.email.lower() != user.email.lower():
+        return err("This verification link is for an email address that has changed.", 400)
+
+    user.email_verified = True
+    user.email_verified_at = datetime.now(timezone.utc)
+    row.mark_used()
+    db.session.commit()
+
+    return ok(message="Email verified! You can now sign in.")
+
+
+@auth_bp.post("/resend-verification")
+def resend_verification():
+    """Re-issue a verification token and resend the email.
+
+    Identical enumeration-resistance to forgot-password: always returns
+    success, even if the email doesn't match a user. Rate-limited.
+    """
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email or not EMAIL_RE.match(email):
+        return err("Please enter a valid email address", 400)
+
+    if not _check_rate_limit(f"resend_email:{email}", max_count=3, window_seconds=3600):
+        return err("Too many resend requests for this email. Please wait an hour.", 429)
+    ip = _client_ip()
+    if not _check_rate_limit(f"resend_ip:{ip}", max_count=10, window_seconds=3600):
+        return err("Too many resend requests from your network. Please wait an hour.", 429)
+
+    user = User.query.filter_by(email=email).first()
+
+    # Always respond the same way regardless of whether the email exists,
+    # OR whether the user is already verified.
+    if user and user.is_active and not user.email_verified:
+        from ..services.auth_service import _send_verification_email_for
+        try:
+            _send_verification_email_for(user, request_ip=ip)
+        except Exception:
+            pass  # best effort
+
+    return ok(message="If an unverified account with that email exists, a verification link has been sent.")

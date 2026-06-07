@@ -232,28 +232,32 @@ export const store = {
   // ═══════════════════════════════════════════════════════════
 
   /** Register a real user via the backend. */
-  async apiRegister(input: { full_name: string; email: string; phone: string; password: string; promo_code?: string }): Promise<{ ok: boolean; error?: string; user?: User }> {
+  async apiRegister(input: { full_name: string; email: string; phone: string; password: string; promo_code?: string }): Promise<{ ok: boolean; error?: string; user?: User; verification_required?: boolean }> {
     try {
-      const apiUser = await authApi.register(input)
+      const { user: apiUser, verificationRequired } = await authApi.register(input)
       const user: User = {
         full_name: apiUser.full_name,
         email: apiUser.email,
         phone: apiUser.phone,
         referral_code: apiUser.referral_code,
         role: apiUser.role,
-        email_verified: true,
+        email_verified: apiUser.email_verified ?? !verificationRequired,
         two_factor_enabled: false,
       }
-      set((s) => ({ ...s, user }))
-      await store.apiLoadWallet()
-      return { ok: true, user }
+      // Only put the user in the store + load wallet if we have a session
+      // (no JWT means verification is required first).
+      if (!verificationRequired) {
+        set((s) => ({ ...s, user }))
+        await store.apiLoadWallet()
+      }
+      return { ok: true, user, verification_required: verificationRequired }
     } catch (e: any) {
       return { ok: false, error: e?.message || 'Registration failed' }
     }
   },
 
   /** Login a real user via the backend. */
-  async apiLogin(email: string, password: string): Promise<{ ok: boolean; error?: string; user?: User }> {
+  async apiLogin(email: string, password: string): Promise<{ ok: boolean; error?: string; error_code?: string; user?: User }> {
     try {
       const apiUser = await authApi.login(email, password)
       const user: User = {
@@ -262,14 +266,20 @@ export const store = {
         phone: apiUser.phone,
         referral_code: apiUser.referral_code,
         role: apiUser.role,
-        email_verified: true,
+        email_verified: apiUser.email_verified ?? true,
         two_factor_enabled: false,
       }
       set((s) => ({ ...s, user }))
       await store.apiLoadWallet()
       return { ok: true, user }
     } catch (e: any) {
-      return { ok: false, error: e?.message || 'Invalid email or password' }
+      // Surface error_code for the email-not-verified case so the
+      // login UI can offer a "resend verification" action.
+      return {
+        ok: false,
+        error: e?.message || 'Invalid email or password',
+        error_code: e?.data?.error_code,
+      }
     }
   },
 

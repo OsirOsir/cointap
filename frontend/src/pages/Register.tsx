@@ -65,6 +65,12 @@ export function Register() {
       setError(res.error || 'Registration failed')
       return
     }
+    // If email verification is required, go to the verify page with the
+    // email pre-filled. Otherwise straight to dashboard.
+    if (res.verification_required) {
+      navigate(`/verify-email?email=${encodeURIComponent(f.email.toLowerCase().trim())}`)
+      return
+    }
     navigate('/dashboard')
   }
 
