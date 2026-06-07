@@ -11,3 +11,4 @@ from .announcement import Announcement
 from .chat import Conversation, ChatMessage, generate_visitor_token
 from .job_application import JobApplication
 from .platform_snapshot import PlatformSnapshot
+from .password_reset import PasswordResetToken

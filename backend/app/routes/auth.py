@@ -154,3 +154,125 @@ def change_password():
     db.session.commit()
     return ok(message="Password updated successfully")
 
+
+# ────────────────────────────────────────────────────────────────────
+# Password Reset Flow
+# ────────────────────────────────────────────────────────────────────
+#
+# Two endpoints:
+#   POST /api/auth/forgot-password  — user requests a reset link
+#   POST /api/auth/reset-password   — user submits new password with token
+#
+# Security model:
+#   - Always return success on forgot-password, even if email doesn't exist.
+#     Prevents email enumeration ("does this email have an account?").
+#   - Rate limit forgot-password requests by email + by IP to prevent
+#     email-bombing (spammer triggers 1000 reset emails to one victim).
+#   - Tokens stored as SHA-256 hashes — a DB leak doesn't yield live tokens.
+#   - Tokens are one-shot and expire in 1 hour.
+
+# In-memory rate limiter (per-process). For a single-worker Gunicorn this
+# is fine. If we ever scale to multiple workers we'll move this to Redis.
+_rate_limits = {}   # key -> [timestamp, count]
+
+
+def _check_rate_limit(key: str, *, max_count: int, window_seconds: int) -> bool:
+    """Returns True if request is allowed, False if rate-limited."""
+    import time
+    now = time.time()
+    entry = _rate_limits.get(key)
+    if entry is None or (now - entry[0]) > window_seconds:
+        _rate_limits[key] = [now, 1]
+        return True
+    entry[1] += 1
+    if entry[1] > max_count:
+        return False
+    return True
+
+
+def _client_ip() -> str:
+    """Get the real client IP, honoring X-Forwarded-For from nginx."""
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+@auth_bp.post("/forgot-password")
+def forgot_password():
+    """Issue a password reset token and email it to the user.
+
+    Always returns success — even if the email doesn't match a real user
+    — to prevent email enumeration.
+    """
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email or not EMAIL_RE.match(email):
+        return err("Please enter a valid email address", 400)
+
+    # Rate limiting: per-email (max 3/hour) and per-IP (max 10/hour)
+    if not _check_rate_limit(f"forgot_email:{email}", max_count=3, window_seconds=3600):
+        return err("Too many reset requests for this email. Please wait an hour.", 429)
+    ip = _client_ip()
+    if not _check_rate_limit(f"forgot_ip:{ip}", max_count=10, window_seconds=3600):
+        return err("Too many reset requests from your network. Please wait an hour.", 429)
+
+    user = User.query.filter_by(email=email).first()
+
+    # IMPORTANT: respond identically whether or not the user exists.
+    # This prevents an attacker from probing "does this email have an account?"
+    if user and user.is_active:
+        from ..models.password_reset import PasswordResetToken
+        from ..utils.email import send_password_reset_email
+        import os
+        raw_token = PasswordResetToken.issue_for_user(user.id, request_ip=ip)
+        frontend_url = os.getenv("FRONTEND_URL", "https://cointap.online").rstrip("/")
+        reset_url = f"{frontend_url}/reset-password?token={raw_token}"
+        # Best-effort send — don't leak email failures to the response
+        send_password_reset_email(
+            to_email=user.email,
+            full_name=user.full_name,
+            reset_url=reset_url,
+        )
+
+    return ok(message="If an account with that email exists, a reset link has been sent.")
+
+
+@auth_bp.post("/reset-password")
+def reset_password():
+    """Consume a reset token and set a new password.
+
+    Token is single-use and expires in 1 hour.
+    """
+    data = request.get_json(silent=True) or {}
+    raw_token = (data.get("token") or "").strip()
+    new_password = data.get("new_password") or ""
+
+    if not raw_token:
+        return err("Reset token is missing", 400)
+    if not new_password or len(new_password) < 8:
+        return err("Password must be at least 8 characters", 400)
+
+    # Rate limit by IP to slow down brute-force on tokens. Tokens are 256
+    # bits so brute-force is effectively impossible anyway, but this stops
+    # someone hammering us with garbage.
+    ip = _client_ip()
+    if not _check_rate_limit(f"reset_ip:{ip}", max_count=20, window_seconds=600):
+        return err("Too many attempts. Please wait a few minutes.", 429)
+
+    from ..models.password_reset import PasswordResetToken
+    row = PasswordResetToken.find_valid_by_raw(raw_token)
+    if not row:
+        return err("This reset link is invalid or has expired. Request a new one.", 400)
+
+    user = User.query.get(row.user_id)
+    if not user:
+        return err("This reset link is invalid or has expired. Request a new one.", 400)
+
+    # Update password and mark token used (transactionally)
+    user.password_hash = hash_password(new_password)
+    row.mark_used()
+    db.session.commit()
+
+    return ok(message="Password updated. You can now sign in with your new password.")
