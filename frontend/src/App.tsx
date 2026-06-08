@@ -19,6 +19,8 @@ import { Admin } from '@/pages/Admin'
 import { Profile } from '@/pages/Profile'
 import { VerifyEmail } from '@/pages/VerifyEmail'
 import { Apply } from '@/pages/Apply'
+import { Privacy } from '@/pages/Privacy'
+import { Terms } from '@/pages/Terms'
 import { store } from '@/lib/cointap-store'
 
 export default function App() {
@@ -54,6 +56,8 @@ export default function App() {
         {/* Careers — public, mobile-first form. /careers redirects to /apply. */}
         <Route path="/apply" element={<Apply />} />
         <Route path="/careers" element={<Navigate to="/apply" replace />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
 
         {/* Protected (layout with sidebar) */}
         <Route element={<AppLayout />}>
