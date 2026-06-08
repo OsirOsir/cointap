@@ -177,7 +177,12 @@ export const walletApi = {
   get: () => http.get('/wallet/').then((d) => d.wallet),
   transactions: (page = 1) => http.get(`/wallet/transactions?page=${page}`),
   initiateDeposit: (amount: number, phone: string) =>
-    http.post('/wallet/deposit/initiate', { amount, phone }),
+    http.post<{
+      ok: boolean
+      message: string
+      checkout_request_id: string
+      log_id: number
+    }>('/wallet/deposit/initiate', { amount, phone }),
   // Dashboard analytics — real per-user data
   portfolioHistory: () => http.get<{
     ok: boolean

@@ -51,15 +51,41 @@ def start_scheduler(app: Flask, scheduler: BackgroundScheduler):
             except Exception as e:
                 app.logger.error(f"[Scheduler] Snapshot job failed: {e}")
 
+    def mpesa_reconcile_job():
+        """Catch up on any stuck STK pushes where Daraja never called us back.
+
+        For each pending log >90 seconds old, ask Daraja its actual outcome
+        via the STK Query API. Credit / fail as appropriate. Old stragglers
+        (>30min) are marked 'expired' so they stop being polled.
+
+        Daraja sandbox callbacks are usually reliable in our setup, but
+        production traffic occasionally drops a callback or two — this is
+        the safety net that prevents users staring at a spinner forever
+        when in fact M-Pesa already debited them.
+        """
+        with app.app_context():
+            try:
+                from .mpesa_service import reconcile_stuck_pending, expire_old_pendings
+                updated = reconcile_stuck_pending()
+                if updated:
+                    app.logger.info(f"[Scheduler] M-Pesa reconcile: resolved {updated} stuck STK pushes")
+                expired = expire_old_pendings()
+                if expired:
+                    app.logger.info(f"[Scheduler] M-Pesa reconcile: expired {expired} stale pendings")
+            except Exception as e:
+                app.logger.error(f"[Scheduler] M-Pesa reconcile failed: {e}")
+
     # Run every 60 seconds
     scheduler.add_job(maturity_job, "interval", seconds=60, id="maturity_job", replace_existing=True)
     # Run every 5 minutes
     scheduler.add_job(pool_release_job, "interval", seconds=300, id="pool_release_job", replace_existing=True)
     # Run every 30 minutes
     scheduler.add_job(snapshot_job, "interval", minutes=30, id="snapshot_job", replace_existing=True)
+    # Run every 5 minutes — M-Pesa STK reconciliation
+    scheduler.add_job(mpesa_reconcile_job, "interval", seconds=300, id="mpesa_reconcile_job", replace_existing=True)
 
     scheduler.start()
-    app.logger.info("[Scheduler] Started — maturity (60s), pool release (300s), snapshot (30m)")
+    app.logger.info("[Scheduler] Started — maturity (60s), pool release (300s), snapshot (30m), mpesa reconcile (300s)")
 
     # First-boot backfill — runs once if the snapshots table is empty
     try:

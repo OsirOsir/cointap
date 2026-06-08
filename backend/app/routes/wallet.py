@@ -38,6 +38,9 @@ def get_transactions():
 @jwt_required()
 def deposit_initiate():
     from ..models.settings import get_settings
+    from ..models.mpesa_log import MpesaLog
+    from datetime import datetime, timezone, timedelta
+
     settings = get_settings()
     if not settings.deposits_enabled:
         return err("Deposits are temporarily disabled. Please try again later.", 403)
@@ -46,14 +49,84 @@ def deposit_initiate():
 
     user = current_user()
     d = request.get_json() or {}
-    amount = float(d.get("amount", 0))
-    phone = d.get("phone", user.phone)
+    try:
+        amount = float(d.get("amount", 0))
+    except (TypeError, ValueError):
+        return err("Invalid amount", 400)
+    phone = (d.get("phone") or user.phone or "").strip()
+
     if amount < 10:
-        return err("Minimum deposit is Ksh 10")
+        return err("Minimum deposit is Ksh 10", 400)
+    if amount > 150_000:
+        return err("Maximum deposit per transaction is Ksh 150,000", 400)
+
+    # Prevent rapid double-submits: block if the same user already has a
+    # pending STK from the last 60 seconds. (Stops accidental double-taps
+    # AND deliberate spam — Daraja itself also rate-limits, but our error
+    # message is friendlier.)
+    recent = (
+        MpesaLog.query
+        .filter_by(user_id=user.id, transaction_type="stk_push", status="pending")
+        .filter(MpesaLog.created_at > datetime.now(timezone.utc) - timedelta(seconds=60))
+        .first()
+    )
+    if recent:
+        return err(
+            "You already have an M-Pesa request in progress. Please complete or cancel it on your phone first.",
+            429,
+        )
+
     result = initiate_stk_push(user.id, phone, amount)
     if not result["ok"]:
-        return err(result["error"])
-    return ok(message="M-Pesa prompt sent to your phone", checkout_request_id=result["checkout_request_id"])
+        return err(result["error"], 400)
+    return ok(
+        message="M-Pesa prompt sent to your phone",
+        checkout_request_id=result["checkout_request_id"],
+        log_id=result.get("log_id"),
+    )
+
+
+@wallet_bp.get("/deposit/status/<int:log_id>")
+@jwt_required()
+def deposit_status(log_id: int):
+    """Poll endpoint for the frontend during STK push.
+
+    Returns the status of one MpesaLog row, scoped to the current user
+    (so users can only query their own attempts).
+    """
+    from ..models.mpesa_log import MpesaLog
+    user = current_user()
+    record = MpesaLog.query.filter_by(id=log_id, user_id=user.id).first()
+    if not record:
+        return err("Deposit not found", 404)
+    return ok(
+        status=record.status,                # pending|success|failed|expired
+        amount=float(record.amount or 0),
+        receipt=record.mpesa_receipt,
+        message=_status_message(record.status, record.result_desc),
+        created_at=record.created_at.isoformat() if record.created_at else None,
+    )
+
+
+def _status_message(status: str, result_desc: str | None) -> str:
+    if status == "pending":
+        return "Waiting for you to enter your M-Pesa PIN…"
+    if status == "success":
+        return "Deposit confirmed!"
+    if status == "expired":
+        return "The M-Pesa prompt timed out. Please try again."
+    # failed
+    if result_desc:
+        low = result_desc.lower()
+        if "cancel" in low or "1032" in low:
+            return "You cancelled the M-Pesa prompt."
+        if "timeout" in low or "1037" in low:
+            return "The M-Pesa prompt timed out on your phone."
+        if "balance" in low or "insufficient" in low:
+            return "Your M-Pesa balance was insufficient."
+        if "wrong" in low or "incorrect" in low or "pin" in low:
+            return "Incorrect M-Pesa PIN."
+    return "Payment didn't go through. Please try again."
 
 
 @wallet_bp.post("/deposit/callback")

@@ -16,6 +16,10 @@ class BaseConfig:
     MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE", "174379")
     MPESA_PASSKEY = os.getenv("MPESA_PASSKEY", "")
     MPESA_CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL", "")
+    # CustomerPayBillOnline (Paybill) | CustomerBuyGoodsOnline (Till / Buy Goods)
+    # Sandbox shortcode 174379 works with CustomerPayBillOnline.
+    # For your real Till, switch this to CustomerBuyGoodsOnline.
+    MPESA_TRANSACTION_TYPE = os.getenv("MPESA_TRANSACTION_TYPE", "CustomerPayBillOnline")
     MPESA_B2C_SHORTCODE = os.getenv("MPESA_B2C_SHORTCODE", "")
     MPESA_B2C_INITIATOR_NAME = os.getenv("MPESA_B2C_INITIATOR_NAME", "")
     MPESA_B2C_SECURITY_CREDENTIAL = os.getenv("MPESA_B2C_SECURITY_CREDENTIAL", "")

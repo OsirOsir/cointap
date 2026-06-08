@@ -389,10 +389,15 @@ export const store = {
   },
 
   /** Initiate an M-Pesa deposit (STK push) via the backend. */
-  async apiInitiateDeposit(amount: number, phone: string): Promise<{ ok: boolean; error?: string; message?: string }> {
+  async apiInitiateDeposit(amount: number, phone: string): Promise<{ ok: boolean; error?: string; message?: string; log_id?: number; checkout_request_id?: string }> {
     try {
       const res = await walletApi.initiateDeposit(amount, phone)
-      return { ok: true, message: res.message || 'M-Pesa prompt sent to your phone' }
+      return {
+        ok: true,
+        message: res.message || 'M-Pesa prompt sent to your phone',
+        log_id: res.log_id,
+        checkout_request_id: res.checkout_request_id,
+      }
     } catch (e: any) {
       return { ok: false, error: e?.message || 'Deposit failed' }
     }
